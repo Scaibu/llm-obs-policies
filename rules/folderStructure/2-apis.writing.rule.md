@@ -14,6 +14,8 @@ enforcement: "Absolute (Zero-Omission Policy)"
 
 ## 1. Strict Guardrails
 
+0. **STRICT NON-ASSUMPTION & SCOPE ISOLATION INVARIANT**: Strictly never assume anything and do not create anything extra unless explicitly requested by the user.
+
 Guardrail 1: Strict Response Envelope Invariant
 Every HTTP REST response MUST wrap its payload in `success`, `statusCode`, `data`/`error`, and `meta`. Naked JSON objects or arrays are strictly prohibited.
 

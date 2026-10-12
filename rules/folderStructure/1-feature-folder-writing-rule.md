@@ -14,8 +14,10 @@ contract_version: "2.1"
 > - **Frontend Features:** Stateful client architecture strictly adhering to the **State-Controller-Model Triad** (`View` -> `Controller` -> `State` -> `Model`).
 
 ---
-
+ 
 # PART I: STRICT GUARDRAILS (WHAT NOT TO DO AT ALL)
+
+0. **STRICT NON-ASSUMPTION & SCOPE ISOLATION INVARIANT**: Strictly never assume anything and do not create anything extra unless explicitly requested by the user.
 
 These are non-negotiable negative constraints and architectural invariants. Systems, AI agents, and engineers MUST review these first before taking any action:
 

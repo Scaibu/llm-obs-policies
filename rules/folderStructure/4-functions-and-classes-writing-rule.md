@@ -15,6 +15,8 @@ Every class, interface, method, and function follows the naming formulas, trace 
 
 # PART I: STRICT GUARDRAILS
 
+0. **STRICT NON-ASSUMPTION & SCOPE ISOLATION INVARIANT**: Strictly never assume anything and do not create anything extra unless explicitly requested by the user.
+
 1. **NEVER write comments of any kind.** No inline, block, docblock, header, or trailing comments in any source file. Code is self-documenting through names and types.
 
 2. **NEVER mutate or reassign a parameter. All parameters are constant/final, deeply immutable, and explicitly typed.**

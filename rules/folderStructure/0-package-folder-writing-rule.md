@@ -14,6 +14,8 @@ enforcement: "Absolute (Zero-Omission Policy)"
 
 ## 2. Strict Package Guardrails
 
+0. **STRICT NON-ASSUMPTION & SCOPE ISOLATION INVARIANT**: Strictly never assume anything and do not create anything extra unless explicitly requested by the user.
+
 Guardrail 1: Sub-Package Isolation Boundary
 No sub-package may import source code directly from another sub-package. All inter-package communication must route through published versioned contracts and generated client SDKs under src/infra/clients/.
 
