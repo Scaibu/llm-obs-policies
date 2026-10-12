@@ -1,163 +1,98 @@
 ---
-agent_activation_trigger: "ON_REFERENCE | ON_CONTEXT_LOAD | ON_FEATURE_CREATION"
-agent_role: "Lead Systems Architect & Feature Structure Compliance Enforcer"
-target_scope: "All Feature Creation, Refactoring, Code Generation & Maintenance"
-execution_mode: "Strict & Non-Negotiable Enforcement Gate"
-enforcement: "Absolute (Zero-Omission Policy)"
+agent_role: "Feature Structure Compliance Enforcer"
+trigger: "ON_REFERENCE | ON_CONTEXT_LOAD | ON_FEATURE_CREATION"
+scope: "Feature creation, refactoring, code generation, maintenance"
+mode: "Strict"
+contract_version: "2.0"
 ---
 
-# Feature Folder Structure and Sequential File Creation Order
+# Feature Structure Contract
 
-(Universal Language-Agnostic Operational Rule for Polyglot Sub-Packages in Go, Python, Rust, Dart, Java, C#, C++, Node.js/TypeScript)
+Sections 1-3 are always loaded. Section 4 (CLI protocol) loads on `ON_FEATURE_CREATION` only.
+Reference tree: `policies/rules/folderStructure/api-structure.md` (repo-relative).
 
----
+## 1. Role Table (single source of truth)
 
-## 1. Mandatory Sequential File Creation Order
+Naming: `{feature}.{role}.[ext]` (`{feature}_{role}` for snake_case languages).
+Creation and population order = table order.
+Tier C = always created. Tier X = created only when the trigger applies.
 
-When creating or refactoring any feature, create files in this exact sequential order:
+| # | Role | Path | Tier | Trigger / Purpose |
+|---|------|------|------|-------------------|
+| 1 | context | `context.yml` | C | Durable only: boundaries, invariants, ports |
+| 2 | types | `types/{f}.types` | C | Domain models, input/output DTOs |
+| 3 | schema | `schema/{f}.schema` | C | Validation + `Mapper` (fromApi, toApi) |
+| 4 | queries | `queries/{f}.queries` | C | Named `FLOW_{VERB}_{ENTITY}_{CRITERIA}` queries |
+| 5 | port | `repository/{f}.repository.port` | C | `Repository` interface instance |
+| 6 | repository | `repository/{f}.repository` | C | Adapter executing queries |
+| 7 | rules | `rules/{f}.rules` | X | Any business branching (see rule test below) |
+| 8 | machine | `machines/{f}.machine` | X | Entity has a lifecycle (>= 3 states) |
+| 9 | workflow | `workflows/{f}.workflow` | X | Multi-step automation |
+| 10 | service | `service/{f}.service` | C | Orchestrates port + rules + machine, owns transactions |
+| 11 | index | `index` | C | Public facade: service + public types only |
+| 12 | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Parse, call service, return envelope |
+| 13 | router | `src/api/rest/v1/routers/{f}.router` | C | Mount endpoints |
+| 14 | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Required whenever rules / machine exist |
 
-1. context.yml
-which will hold agent related working memories 
+Agent scratch notes go in a git-ignored `.agent-notes.md`, never in `context.yml`.
 
-2. types/{feature}.types.[ext]
-Define feature-local domain models, input DTOs, output DTOs, and type definitions.
+**Rule test:** "Would a non-engineer change this condition?" Yes -> it belongs in `rules`.
+Guard clauses, null checks, and loop conditions stay in code.
 
-3. schema/{feature}.schema.[ext]
-Define runtime validation schema and bidirectional anti-corruption layer mappings (fromApi and toApi).
+## 2. Shared Generic Kernel (written once, reused by every feature)
 
-4. queries/{feature}.queries.[ext|sql]
-Define named parameterized SQL queries using the FLOW_{VERB}_{ENTITY}_{CRITERIA} formula.
+Location: `src/shared/kernel`. Features instantiate these types and never redefine them.
 
-5. repository/{feature}.repository.port.[ext]
-Define the abstract hexagonal port interface for data operations.
-
-6. repository/{feature}.repository.[ext]
-Implement the concrete repository adapter that executes the named SQL queries against the database pool.
-
-7. rules/{feature}.rules.[ext]
-Define business logic decision tables as structured data with priority weights and deny-override semantics.
-- all if else logic will goes here 
-
-8. machines/{feature}.machine.[ext] 
-Define the state machine lifecycle DAG with deterministic transition triggers and guard conditions.
-
-9. workflows/{feature}.workflow.[ext]
-Define the multi-step automation DAG steps array.
-
-10. service/{feature}.service.[ext]
-Implement the pure domain service injecting the repository port and executing rules and machines with zero HTTP or raw DB driver imports.
-
-11. index.[ext]
-Export the public feature facade (domain service and public types only). Never export repositories, drivers, or raw queries.
-
-12. src/api/rest/v1/handlers/{feature}.handler.[ext]
-Implement the HTTP delivery handler that validates requests, invokes the domain service, and returns the RFC standardized envelope (success, statusCode, data, meta).
-
-13. src/api/rest/v1/routers/{feature}.router.[ext]
-Mount the feature endpoints on the API gateway router.
-
----
-
-## 2. The 10-Role Mandatory Feature Inventory
-
-Every feature directory under `src/features/{feature-name}/` is automatically scaffolded via `scaffold-feature` with these 10 mandatory roles:
-
-1. `context.yml`: Feature domain boundaries, invariants, and ports.
-2. `index.[ext]`: Public facade exporting domain service and public types only.
-3. `schema/{feature}.schema.[ext]`: Validation schema and declarative ACL mappers (`fromApi`, `toApi`).
-4. `queries/{feature}.queries.[ext|sql]`: Named parameterized SQL queries (`FLOW_*`).
-5. `rules/{feature}.rules.[ext]`: Business decision tables evaluated as data.
-6. `machines/{feature}.machine.[ext]`: Deterministic state transition lifecycle graphs.
-7. `workflows/{feature}.workflow.[ext]`: Multi-step automation DAG steps.
-8. `repository/{feature}.repository.port.[ext]`: Hexagonal domain port interface.
-9. `repository/{feature}.repository.[ext]`: Persistence adapter executing queries.
-10. `service/{feature}.service.[ext]`: Pure domain orchestrator with zero DB/HTTP imports.
-11. `types/{feature}.types.[ext]`: Domain models, inputs, and DTO types.
-
-*(The complete reference directory tree is documented in [api-structure.md](file:///home/btpl-lap-22/live/llm-obs-infra/policies/rules/folderStructure/api-structure.md))*
-
-
----
-
-## 3. Universal Language-Agnostic Naming Formula
-
-All files follow the deterministic formula:
-{feature}.{role}.[ext] (or {feature}_{role}.[ext] for languages requiring snake_case identifiers)
-
-- Domain Context: context.yml
-- Public Facade: index.[ext]
-- Schema and ACL: schema/{feature}.schema.[ext]
-- Flow Queries: queries/{feature}.queries.[ext|sql]
-- Rules as Data: rules/{feature}.rules.[ext]
-- State Machine: machines/{feature}.machine.[ext]
-- Workflow DAG: workflows/{feature}.workflow.[ext]
-- Repository Port: repository/{feature}.repository.port.[ext]
-- Repository Impl: repository/{feature}.repository.[ext]
-- Domain Service: service/{feature}.service.[ext]
-- Domain Types: types/{feature}.types.[ext]
-- REST Handler: src/api/rest/v1/handlers/{feature}.handler.[ext]
-- REST Router: src/api/rest/v1/routers/{feature}.router.[ext]
-
----
-
-## 4. Strict Guardrails
-
-Guardrail 1: 10-File Inventory Inviolability
-Every feature must contain all 10 feature roles. Never omit schema, queries, rules, machines, workflows, repository port, repository impl, service, types, or context.yml.
-
-Guardrail 2: Hexagonal Dependency Inversion
-Domain service must import only repository port interface. Never import concrete database drivers, ORMs, connection pools, or HTTP frameworks into domain services.
-
-Guardrail 3: Zero Inline SQL
-Raw SQL strings are strictly prohibited inside services, repositories, and handlers. All queries must be declared inside queries.sql using named FLOW_{VERB}_{ENTITY}_{CRITERIA} constants.
-
-Guardrail 4: Anti-Corruption Layer Isolation
-External API wire contract changes must be mapped inside schema via fromApi and toApi. Never modify internal domain models or database columns to satisfy external wire changes.
-
-Guardrail 5: Zero Inline Comments Doctrine
-Never write mid-function inline comments or annotations inside function bodies. Document the entire algorithm once at the top of the file in the header docblock.
-
-Guardrail 6: Public Facade Boundary
-Other features and API routers must import only from the feature index file. Never deep-import internal repositories, queries, or service internals across feature boundaries.
-
-Guardrail 7: Strict Response Envelope
-All HTTP delivery handlers must return standardized RFC response envelopes containing success, statusCode, data or error, and meta blocks with W3C trace IDs.
-
-Guardrail 8: Zero File Duplication
-Maintain exactly one file per role. Never create duplicate variations of files with mixed dot or underscore naming.
-
-Guardrail 9: Pure CLI & Domain Execution Invariant (Zero REST API for File Operations)
-Never invoke, expose, or rely on HTTP/REST APIs for creating files, scaffolding feature structures, or synchronizing the architectural knowledge graph. All file generation, scaffolding, and graph synchronization operations must be performed strictly via deterministic local CLI commands (`scaffold-feature`, `create-file`, `link-file`) or direct domain services.
-
----
-
-## 5. AI Agent Execution Instructions: Scaffolding & Graph Protocol
-
-### Instruction 1: Mandatory Automated Scaffolding
-When requested to create, scaffold, or initialize a new feature, NEVER manually create individual directories or empty files using raw filesystem writes.
-You MUST execute the feature scaffolder via the CLI:
-```bash
-python3 -m src.api.cli.main scaffold-feature <feature_name>
 ```
-*(If scaffolding inside a sub-package, pass `--base-dir packages/<package>/src/features --package-root packages/<package>`)*
-
-**Rationale:** This guarantees all 10 mandatory roles and ingress handlers are generated in strict sequential order and instantly registers the 25+ node hexagonal DAG in the Knowledge Graph.
-
-### Instruction 2: Mandatory `create-file` for Single File Additions
-When adding a new auxiliary file (e.g. an additional rule set, specialized repository adapter, or shared helper), NEVER create an orphan file on disk. You MUST execute:
-```bash
-python3 -m src.api.cli.main create-file --path <file_path> --role <Role> --rel <RelationshipType> --target <target_node_or_file> --direction incoming
-```
-**Rationale:** Enforces that every newly created file is bound immediately to its upstream/downstream collaborator in the Knowledge Graph.
-
-### Instruction 3: Connecting Existing Components via `link-file`
-When introducing cross-feature communication, event pub/sub delivery, or shared library dependencies between existing files, you MUST execute:
-```bash
-python3 -m src.api.cli.main link-file --source <source> --rel <RelationshipType> --target <target>
+Result<T, E>              ok(T) | err(E)
+Mapper<Api, Domain>       { fromApi(Api): Result<Domain, ValidationError>; toApi(Domain): Api }
+Repository<T, ID, Q>      { get(ID); find(Q); save(T); remove(ID) }  all return Result
+UnitOfWork                { run(fn): Result }   transaction boundary
+RuleTable<Ctx, Decision>  { rules: Rule<Ctx, Decision>[]; priority; deny-override }
+StateMachine<S, Ev, Ctx>  { initial: S; transitions: Map<S, Map<Ev, {to: S; guard?}>> }
+Workflow<Ctx>             { steps: Step<Ctx>[] }   Step = { id; run(Ctx): Result; dependsOn[] }
+Envelope<T>               { success; statusCode; data | error; meta: { traceId } }
 ```
 
-### Instruction 4: Sequential Content Population
-After executing automated scaffolding, populate the business logic into the generated files in the exact order defined in Section 1 (`context.yml` -> `types` -> `schema` -> `queries` -> `repository port` -> `repository adapter` -> `rules` -> `machine` -> `workflow` -> `service` -> `index` -> `handler` -> `router`). Always preserve the Zero-Inline-Comment header docblock doctrine.
+A feature file is a typed instantiation, e.g. `RuleTable<OrderCtx, Discount>`, not custom plumbing.
 
+## 3. Guardrails
 
+1. **DRY:** Generic behavior goes in the kernel. If two features repeat a pattern, move it to the kernel.
+2. **SRP / logic placement:** Branching only in rules. Lifecycle only in machine. Orchestration only in service. Handler only parses, calls, and wraps the envelope.
+3. **Strict typing:** No `any`, no untyped dicts, no unchecked casts. Public functions return `Result`, not thrown exceptions.
+4. **Dependency direction:** service imports the port only (no drivers, ORMs, pools, HTTP). Other features import only the feature `index`.
+5. **Transactions:** Start and end in the service via `UnitOfWork`. Never in handler or repository.
+6. **SQL:** Only in `queries`, as named `FLOW_*` constants. Parameterized, never string-built.
+7. **ACL:** Wire-contract changes are absorbed in `schema` (fromApi/toApi). Domain models and DB columns never change for them.
+8. **Comments:** None inside function bodies. The algorithm and rationale go in one header docblock per file.
+   Exception: a single `WHY:` line is allowed for a non-obvious workaround (vendor bug, race condition), with an ADR link if one exists.
+9. **One file per role.** No duplicate or mixed dot/underscore variants.
+10. **Envelope:** Every handler returns `Envelope<T>` with a W3C trace ID in `meta`.
 
+## 4. Agent Protocol (CLI only, never REST for file operations)
+
+```bash
+python3 -m src.api.cli.main scaffold-feature <name> [--tier core|full]
+python3 -m src.api.cli.main create-file --path <p> --role <R> --rel <Rel> --target <t> --direction incoming
+python3 -m src.api.cli.main link-file --source <s> --rel <Rel> --target <t>
+python3 -m src.api.cli.main verify-feature <name>
+```
+
+Sub-package scaffolding: add `--base-dir packages/<pkg>/src/features --package-root packages/<pkg>`.
+Never hand-create directories or orphan files. Populate files in table order.
+
+### Mechanical enforcement (tooling, not prose)
+
+`verify-feature` and CI must check, so the agent does not self-certify:
+- Required files exist for the declared tier, and naming matches the formula.
+- Import boundaries: service -> port only; cross-feature imports via `index` only; no SQL outside `queries`.
+- Banned patterns: `any`, inline comments (except `WHY:`), string-built SQL.
+
+### Definition of Done
+
+A feature task is complete only when all hold:
+1. `verify-feature <name>` passes.
+2. Type check compiles with no errors.
+3. Tests pass, including rules and machine tests where those roles exist.
+4. Knowledge graph is synced (every new file created via `create-file` or `scaffold-feature`).
