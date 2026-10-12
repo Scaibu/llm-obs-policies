@@ -15,7 +15,33 @@ contract_version: "2.1"
 
 ---
 
-# PART I: BACKEND FEATURE STRUCTURE (Stateless Hexagonal Core)
+# PART I: STRICT GUARDRAILS (WHAT NOT TO DO AT ALL)
+
+These are non-negotiable negative constraints and architectural invariants. Systems, AI agents, and engineers MUST review these first before taking any action:
+
+1. **NEVER Mix Backend and Frontend Paradigms:** Never blend backend hexagonal roles (`service`, `handler`, `queries`) with frontend client roles (`state`, `controller`, `views`) inside the same package or feature folder.
+2. **NEVER Create Mutable State Classes in Backend:** Backend feature services are strictly stateless. Never declare an in-memory mutable `State` class inside backend services.
+3. **NEVER Split Frontend State Across Files:** Exactly one state file (`state/{f}.state`) per frontend feature declaring all state variables. Controller mutates; Views only render; Models hold pure data.
+4. **NEVER Bypass Inversion of Control:** Backend `service` imports `repository.port` only. Never import concrete database drivers, ORM clients, Kafka producers, or HTTP fetch/axios into domain services.
+5. **NEVER Write Inline Raw SQL:** SQL queries exist solely inside `queries/{f}.queries` as named `FLOW_*` constants. Never write ad-hoc SQL strings in repositories or services.
+6. **NEVER Write Inline Comments:** Document algorithm blueprint at the top of the file in the header docblock. Function bodies must be 100% comment-free.
+7. **NEVER Create More Than One File Per Role:** Exactly one file per canonical role. No duplicate, fragmented, or mixed naming conventions.
+8. **NEVER Bypass Middleware or Drop W3C Trace Context:**
+   - Ingress MUST use `TraceMiddleware` (`src/shared/middleware/`) to extract or initialize W3C `traceparent` (`traceId: X`).
+   - Every downstream layer (`service`, `rules`, `machine`, `workflow`, `adapters`) MUST spawn a child span preserving the exact same `traceId`.
+   - Every log message and the final RFC response envelope MUST carry `traceId`. Never execute untraced operations.
+9. **NEVER Allow Uncaught Exceptions or Raw Error Leaks:**
+   - Ingress MUST use `ErrorMiddleware` (`src/shared/middleware/`) as the global safety net.
+   - Every execution boundary (`handler`, `service`, `rules`, `machine`, `workflow`, `adapters`, `controller`) MUST wrap logic in structured `try / catch`.
+   - All caught errors MUST be recorded on the active span (`span.record_exception(err)` and `span.set_status(Status.ERROR)`).
+   - Raw stack traces, database exceptions, or secrets must NEVER leak to the caller. Errors must be mapped to typed `Result.err()` and RFC envelopes.
+10. **NEVER Create Arbitrary or Auxiliary Files (Closed File Set Invariant):**
+    - After scaffolding canonical files, NO auxiliary, helper, or temporary utility files may ever be created.
+    - Features must strictly adhere to the closed canonical set: Backend `(01)`–`(14)` and Frontend `(01)`–`(06)`. Any deviation is strictly prohibited.
+
+---
+
+# PART II: BACKEND FEATURE STRUCTURE (Stateless Hexagonal Core)
 
 ## 1. Backend Role Table & Sequential Logical Flow
 
@@ -42,70 +68,147 @@ The **Step #** indicates the logical request and execution flow sequence.
 
 Agent scratch notes go in a git-ignored `.agent-notes.md`, never in `context.yml`.
 
-## 2. Backend Flow: 2-Sided Bidirectional Asynchronous Pipeline
+## 2. Backend Flow: Bidirectional Asynchronous Pipeline
 
-The flow of data and control is **strictly 2-sided (request $\Downarrow$ and response $\Uparrow$)** and executes **fully asynchronously (`async/await`, non-blocking I/O)** within a **shared unbroken OpenTelemetry W3C trace space**:
+Backend execution runs in two distinct, non-blocking asynchronous directions bound within a **shared OpenTelemetry W3C trace space** (`traceId` propagated end-to-end), mediated by the **Centralized Middleware Pipeline (`src/shared/middleware/`)**:
+
+### 2.1 Inbound Request Pipeline (↓ Ingress to Infrastructure)
 
 ```
-═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-                 2-SIDED ASYNCHRONOUS DATA & CONTROL FLOW (BIDIRECTIONAL HEXAGONAL PIPELINE)
-═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-        INBOUND DISPATCH PHASE (async request ↓)       │      OUTBOUND RESOLUTION PHASE (async response ↑)
-──────────────────────────────────────────────────────┼───────────────────────────────────────────────────
- [Client / Consumer / Ingress Event]                  │ [Client Receives Standardized RFC Response]
-         │ (HTTP / gRPC / Event with W3C traceparent) │        ▲
-         ▼                                            │        │ (Streams HTTP 2xx/4xx/5xx Envelope)
-   (01) router ───────────────────────────────────────┼────────┘
-        │ (extracts traceparent, routes to handler)   │
-        ▼                                             │
-   (02) handler (Ingress Delivery Boundary)           │
-        │ • Starts Root Span (traceId: X)             │
-        │ • Structured try/catch block                │
-        ▼                                             │
-   (03) schema (Anti-Corruption Layer)                │ ◄─── (toApi): Serializes Domain Model to wire format
-        │ • (fromApi): Validates closed payload       │      Wraps in Envelope<T> (success, data, meta: traceId)
-        ▼                                             │
-   (04) types (Domain Input DTOs)                     │
-        │ (Passes pure strongly-typed DTO)            │
-        ▼                                             │
-   (06) service (Pure Domain Orchestrator) ───────────┼────► Returns Result<DomainEntity, DomainError> to Handler
-        │ • Governed by (05) context.yml boundary     │      • Commits / Rollbacks UnitOfWork transaction
-        │ • Spawns Child Span (parent: Root Span)     │      • Records span status (StatusCode.OK or ERROR)
-        │ • try/catch domain boundary                 │
-        │                                             │
-        ├─► (07) rules: Evaluates business as data    │
-        ├─► (08) machine: Validates state transitions │
-        └─► (09) workflow: Executes async DAG steps   │
-        │                                             │
-        ▼                                             │
-   (10) Universal Hexagonal Driven Ports Interface    │ ◄─── Returns async Result<DomainEntity, PortError>
-        (Abstract Secondary Outbound Ports)           │
-        │                                             │
-        ▼ (await non-blocking async I/O via Decorators│
-   (11) Resilient Outbound Adapters                   │
-        [withTracing(withCircuitBreaker(withRetry(withCache(Adapter))))]
-        │                                             │
-        ├──────────────────────┬──────────────────────┼──────────────────────┬────────────────────┐
-        ▼                      ▼                      ▼                      ▼                    ▼
-   [Database Port]     [3rd-Party API Port]   [Event / Messaging]    [Infra / Cache / S3]  [Network / Sockets /
-   • (12) queries.sql  • External SDK/REST    • Kafka / RabbitMQ     • Redis Cache         Any External System]
-   • Connection Pool   • AI/LLM, Stripe, etc. • CloudEvents Producer • Blob / S3 Storage   • Custom Drivers
-        │                      │                      │                      │                    │
-        ▼ (async query)        ▼ (async HTTP/gRPC)    ▼ (async publish)      ▼ (async I/O)        ▼ (async socket)
- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-                             EXTERNAL WORLD / INFRASTRUCTURE SUBSYSTEMS
-       (Databases, Third-Party APIs, Kafka Brokers, Redis Clusters, Cloud Services, Hardware/OS)
- ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
-        │ (DB Result Set)      │ (JSON / Proto Res)   │ (Broker Ack / Offset)│ (Cache Hit/Miss)   │ (Socket Buffer)
-        └──────────────────────┴──────────────────────┼──────────────────────┴────────────────────┘
-                                                      │
-                                                      ▲ (Adapter maps raw external responses via ACL to Domain Model)
-                                                      │ (All async exceptions captured in try/catch and recorded on span)
+   [Client / Consumer / Ingress Event]
+                 │
+                 │ (1. Ingress with W3C traceparent header)
+                 ▼
+      [Centralized Ingress Middleware Pipeline]
+      • TraceMiddleware: Extracts/starts Root Span (traceId: X)
+      • ErrorMiddleware: Wraps pipeline in global try/catch
+                 │
+                 │ (2. Forwards request with trace context)
+                 ▼
+          (01) router
+                 │
+                 │ (3. Matches route to feature handler)
+                 ▼
+          (02) handler
+                 │ • Ingress delivery boundary
+                 │ • Local try/catch error boundary
+                 ▼
+          (03) schema
+                 │ • Anti-Corruption Layer (schema.fromApi)
+                 │ • Validates payload & rejects invalid shapes
+                 ▼
+          (04) types
+                 │ • Constructs strongly-typed Domain Input DTO
+                 ▼
+          (06) service
+                 │ • Pure Domain Orchestrator
+                 │ • Spawns Child Span under Root Span
+                 │ • Domain try/catch + UnitOfWork transaction
+                 │
+                 ├─► (07) rules: Evaluates business rules as data
+                 ├─► (08) machine: Verifies state machine transitions
+                 └─► (09) workflow: Executes multi-step DAG
+                 │
+                 │ (4. Calls Outbound Port Contract)
+                 ▼
+          (10) ports (Universal Driven Port Interface)
+                 │
+                 │ (5. Implemented by decorated adapter)
+                 ▼
+          (11) adapters [Tracing + CircuitBreaker + Retry + Cache]
+                 │
+                 ├───────────────┬───────────────┬───────────────┬───────────────┐
+                 ▼               ▼               ▼               ▼               ▼
+          [Database Port] [3rd-Party APIs] [Kafka / Events][Cache / S3]   [Network Sockets]
+          • (12) queries  • OpenAI / LLMs  • Topic Producer• Redis Cache  • TCP / UDP
+          • SQL Pool      • Stripe / CRM   • CloudEvents   • Blob Storage • WebSockets
+                 │               │               │               │               │
+                 ▼               ▼               ▼               ▼               ▼
+                       [External Subsystems / Infrastructure World]
 ```
+
+#### Inbound Execution Steps:
+1. **`[Middleware Pipeline]`** — `TraceMiddleware` extracts incoming W3C `traceparent` (or creates a root trace), starts **Root Span** (`traceId: X`), and binds trace context. `ErrorMiddleware` opens outer global `try/catch`.
+2. **`(01) router`** — Matches route to feature handler under the active trace context.
+3. **`(02) handler`** — Receives request, wraps execution in local `try/catch`, and forwards payload.
+4. **`(03) schema`** — Runs `schema.fromApi()` validation (Anti-Corruption Layer). Rejects invalid payloads immediately.
+5. **`(04) types`** — Packages validated data into strongly-typed domain input DTOs.
+6. **`(06) service`** — Domain orchestrator: starts **Child Span**, manages domain `try/catch`, coordinates `UnitOfWork` transaction boundary.
+7. **`(07-09) rules / machine / workflow`** — Evaluates business rules as data, validates state machine transitions, or executes automation DAG steps.
+8. **`(10) ports` & `(11) adapters`** — Service awaits abstract outbound port contracts; resilient decorated adapters initiate external I/O.
 
 ---
 
-# PART II: FRONTEND FEATURE STRUCTURE (State-Controller-Model Triad)
+### 2.2 Outbound Response Pipeline (↑ Infrastructure to Client)
+
+```
+                       [External Subsystems / Infrastructure World]
+                 │               │               │               │               │
+                 │ (DB Rows)     │ (HTTP JSON)   │ (Broker ACK)  │ (Cache Hit)   │ (Socket Buffer)
+                 ▼               ▼               ▼               ▼               ▼
+          [Database Port] [3rd-Party APIs] [Kafka / Events][Cache / S3]   [Network Sockets]
+                 │               │               │               │               │
+                 └───────────────┴───────────────┴───────────────┴───────────────┘
+                                                 │
+                                                 │ (1. Raw external response)
+                                                 ▼
+                                          (11) adapters
+                                                 │ • Catches external timeouts/errors
+                                                 │ • Anti-Corruption Layer maps to Domain Model
+                                                 ▼
+                                          (10) ports
+                                                 │ • Delivers Result<DomainEntity, PortError>
+                                                 ▼
+                                          (06) service
+                                                 │ • Commits or rollbacks UnitOfWork
+                                                 │ • Sets Child Span status (OK / ERROR)
+                                                 │ • Returns domain result
+                                                 ▼
+                                          (03) schema
+                                                 │ • Serializes domain entity (schema.toApi)
+                                                 │ • Wraps in RFC Envelope (success, data, traceId)
+                                                 ▼
+                                          (02) handler
+                                                 │ • Returns HTTP envelope
+                                                 ▼
+                                          (01) router
+                                                 │ • Routes response through middleware
+                                                 ▼
+                              [Centralized Egress Middleware Pipeline]
+                              • Injects X-Trace-Id header matching active traceId
+                              • Finalizes Root Span duration & status
+                              • ErrorMiddleware formats Problem Details if error uncaught
+                                                 │
+                                                 ▼
+                                [Client / Ingress Receives Response]
+```
+
+#### Outbound Execution Steps:
+1. **`External Subsystems`** — Return async I/O results, broker ACKs, database rows, or network errors.
+2. **`(11) adapters`** — Intercept raw response, map external shapes back to domain entities via Anti-Corruption Layer, catch timeouts/errors.
+3. **`(10) ports`** — Deliver typed `Result<DomainEntity, PortError>` back to the domain service.
+4. **`(06) service`** — Finalizes transaction (commit or rollback), sets child span status (`StatusCode.OK` or `ERROR`), and returns result to handler.
+5. **`(03) schema`** — Serializes domain entity via `schema.toApi()` and wraps in standardized RFC envelope (`success`, `data`, `meta.traceId`).
+6. **`(02) handler`** — Handles local controller response, returns envelope to router.
+7. **`(01) router`** — Routes HTTP/gRPC response back through the middleware pipeline.
+8. **`[Middleware Pipeline]`** — Injects `X-Trace-Id` header, completes Root Span, catches any unhandled exceptions in `ErrorMiddleware`, and streams response to client.
+
+---
+
+### 2.3 Universal Outbound Subsystems (Any External Technology)
+
+The domain service **never** connects directly to external technologies. It only talks to abstract ports `(10)`, which are implemented by resilient adapters `(11)`:
+- **Databases:** Executes parameterized queries `(12)` via connection pool.
+- **Third-Party APIs:** Calls external REST/gRPC endpoints (e.g., OpenAI/LLMs, Stripe, GitHub).
+- **Messaging & Event Streaming:** Produces CloudEvents to Kafka topics or message queues.
+- **Cache & Object Storage:** Interacts with Redis cache or AWS S3 blob storage.
+- **Networking & Sockets:** Communicates with raw TCP/UDP drivers or WebSockets.
+
+*All adapters are wrapped with resilience decorators:* `withTracing(withCircuitBreaker(withRetry(withCache(adapter))))`.
+
+---
+
+# PART III: FRONTEND FEATURE STRUCTURE (State-Controller-Model Triad)
 
 ## 1. Frontend Role Table & Sequential Logical Flow
 
@@ -149,7 +252,7 @@ Frontend features manage interactive client-side state, user gestures, and prese
 
 ---
 
-# PART III: SHARED GENERIC KERNELS
+# PART IV: SHARED GENERIC KERNELS
 
 Features instantiate shared generic types and never redefine plumbing:
 
@@ -172,33 +275,6 @@ Controller<S>             Base controller dispatching actions and mutating State
 Model                     Immutable domain entity / value object
 ApiPort<T>                HTTP/transport facade returning Result<T, Error>
 ```
-
----
-
-# PART IV: STRICT GUARDRAILS
-
-1. **Architectural Segregation:** Never mix backend hexagonal roles (`service`, `handler`, `queries`) with frontend client roles (`state`, `controller`, `views`) inside the same package or feature folder.
-2. **Backend Statelessness:** Backend feature services are strictly stateless. Never declare an in-memory mutable `State` class inside backend services.
-3. **Frontend Triad Isolation:**
-   - Exactly one state file (`state/{f}.state`) per frontend feature declaring all state variables.
-   - Controller handles mutations; Views only render state and trigger controller actions.
-   - Models are pure data structures with zero state logic.
-4. **Hexagonal Dependency Inversion (Backend):** Backend `service` imports `repository.port` only. No concrete database drivers or HTTP frameworks in services.
-5. **Zero Raw SQL (Backend):** SQL queries exist solely inside `queries/{f}.queries` as named `FLOW_*` constants.
-6. **Zero Inline Comments:** Document algorithm blueprint at the top of the file in the header docblock. 100% comment-free function bodies.
-7. **One File Per Role:** Exactly one file per canonical role. No duplicate or mixed naming conventions.
-8. **Shared Common Trace Space (End-to-End Distributed Tracing):**
-   - Every operation, state mutation, network call, and database query MUST share a single, unbroken W3C Trace Context (`traceparent`, `traceId`, `spanId`).
-   - The ingress boundary (`router`/`handler` in backend; user event in frontend) extracts or initializes the root span.
-   - Every sub-layer (`service`, `rules`, `machine`, `workflow`, `repository`, `controller`) MUST spawn a child span under the same `traceId`.
-   - The active `traceId` must be stamped onto all logs and echoed in the RFC Envelope (`meta.traceId`) so any operation can be inspected in a unified trace waterfall.
-9. **Strict Try-Catch & Error Resilience Invariant:**
-   - Every ingress and orchestration boundary (`handler`, `service`, `controller`) MUST wrap execution in structured `try / catch` blocks.
-   - When an exception occurs:
-     1. Record the exception on the active OpenTelemetry span (`span.record_exception(err)` and `span.set_status(Status.ERROR)`).
-     2. Map the error into a standardized domain `Result.err()` or typed error DTO.
-     3. Return the RFC standardized response envelope (`success: false`, `statusCode`, `error: { code, message, retryable, details }`, `meta: { traceId }`).
-     4. Raw stack traces, internal database exception strings, and secret credentials must NEVER leak to the caller.
 
 ---
 
