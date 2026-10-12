@@ -25,62 +25,82 @@ The **Step #** indicates the logical request and execution flow sequence.
 
 | Step # | Role | Path | Tier | Trigger / Purpose |
 |:------:|------|------|:----:|-------------------|
-| **01** | router | `src/api/rest/v1/routers/{f}.router` | C | Ingress routing: mounts endpoints, extracts W3C `traceparent` |
-| **02** | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Ingress delivery: parses request, runs try/catch, returns RFC Envelope |
-| **03** | schema | `schema/{f}.schema` | C | Validation + Anti-Corruption Layer `Mapper` (fromApi, toApi) |
-| **04** | types | `types/{f}.types` | C | Pure domain models, input/output DTOs |
+| **01** | router | `src/api/rest/v1/routers/{f}.router` | C | Ingress routing: mounts endpoints, extracts W3C `traceparent`, routes incoming async request |
+| **02** | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Ingress delivery: parses request, executes root try/catch, manages root span, serializes response envelope |
+| **03** | schema | `schema/{f}.schema` | C | Validation + Anti-Corruption Layer (ACL): bidirectional mapping (`fromApi` on input, `toApi` on output) |
+| **04** | types | `types/{f}.types` | C | Pure domain models, input/output DTOs, domain error types |
 | **05** | context | `context.yml` | C | Invariants, domain boundaries, required hexagonal ports |
-| **06** | service | `service/{f}.service` | C | Domain orchestrator: owns try/catch, spans, `UnitOfWork` transactions |
-| **07** | rules | `rules/{f}.rules` | X | Business logic decision tables evaluated as structured data |
+| **06** | service | `service/{f}.service` | C | Domain orchestrator: coordinates rules, machine, workflows, transactions (`UnitOfWork`), and awaits outbound ports |
+| **07** | rules | `rules/{f}.rules` | X | Business logic decision tables evaluated as structured data (priority, deny-override) |
 | **08** | machine | `machines/{f}.machine` | X | Deterministic state machine DAG for entity lifecycles (>= 3 states) |
 | **09** | workflow | `workflows/{f}.workflow` | X | Multi-step automation DAG steps traced under root span |
-| **10** | port | `repository/{f}.repository.port` | C | Abstract hexagonal domain port interface |
-| **11** | repository | `repository/{f}.repository` | C | Database persistence adapter executing queries against pool |
-| **12** | queries | `queries/{f}.queries` | C | Named parameterized `FLOW_{VERB}_{ENTITY}_{CRITERIA}` SQL queries |
-| **13** | index | `index` | C | Public facade: exports domain service and public types only |
-| **14** | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Exhaustive unit tests for business rules and state machines |
+| **10** | ports | `repository/{f}.repository.port` (and outbound ports) | C | **Universal Hexagonal Outbound Ports Interface:** Abstract contracts decoupling domain service from **ANY** external subsystem (Database, 3rd-Party APIs, Kafka/Messaging, Redis/Cache, Cloud Storage, Network Sockets, GPU/OS Drivers) |
+| **11** | adapters | `repository/{f}.repository` (and outbound adapters) | C | **Resilient Outbound Adapters:** Concrete adapters implementing ports, wrapped in decorator pipelines (`withTracing`, `withCircuitBreaker`, `withRetry`, `withCache`) that map raw external I/O responses back into domain entities |
+| **12** | queries | `queries/{f}.queries` | C | Named parameterized `FLOW_{VERB}_{ENTITY}_{CRITERIA}` SQL queries (when persistence port is active) |
+| **13** | index | `index` | C | Public facade: exports domain service and public types only; shields internal adapters |
+| **14** | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Exhaustive unit tests for business rules, state machines, and domain workflows |
 
 Agent scratch notes go in a git-ignored `.agent-notes.md`, never in `context.yml`.
 
-## 2. Backend Flow & Sequential Logical DAG
+## 2. Backend Flow: 2-Sided Bidirectional Asynchronous Pipeline
 
-Every request traverses this exact logical step sequence under a **single shared OpenTelemetry trace context**:
+The flow of data and control is **strictly 2-sided (request $\Downarrow$ and response $\Uparrow$)** and executes **fully asynchronously (`async/await`, non-blocking I/O)** within a **shared unbroken OpenTelemetry W3C trace space**:
 
 ```
-[Inbound Client Request with W3C traceparent]
-          │
-          ▼
-   (01) router ──────(DELEGATES_TO)────► (02) handler ───(INVOKES_ACL)───► (03) schema
-   (Ingress Route)                       (Try/Catch + Root Span)           (fromApi/toApi)
-                                                │                                 │
-                                                │                                 ▼
-                                                │                           (04) types
-                                                │                           (Domain DTOs)
-                                     (INVOKES_DOMAIN)
-                                                ▼
-                                         (06) service ◄──(GOVERNS_BOUNDARY)── (05) context.yml
-                                     (Try/Catch + Child Span)
-                                           │        ▲
-                                           │        └──(EXPORTS_FACADE)─── (13) index
-                                           │
-                    ┌──────────────────────┼──────────────────────┐
-                    │                      │                      │
-                    ▼                      ▼                      ▼
-               (07) rules             (08) machine           (09) workflow
-            (Business as Data)      (Lifecycle States)     (DAG Step Runner)
-                    │
-                    ▼
-          (10) repository.port ◄──(CONSUMES_PORT)── (06) service
-                    ▲
-                    │ (IMPLEMENTED_BY)
-                    │
-          (11) repository (Adapter)
-                    │ (EXECUTES_QUERY)
-                    ▼
-          (12) queries (FLOW_* SQL)
-                    │
-                    ▼
-          [Database Connection Pool]
+═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+                 2-SIDED ASYNCHRONOUS DATA & CONTROL FLOW (BIDIRECTIONAL HEXAGONAL PIPELINE)
+═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+        INBOUND DISPATCH PHASE (async request ↓)       │      OUTBOUND RESOLUTION PHASE (async response ↑)
+──────────────────────────────────────────────────────┼───────────────────────────────────────────────────
+ [Client / Consumer / Ingress Event]                  │ [Client Receives Standardized RFC Response]
+         │ (HTTP / gRPC / Event with W3C traceparent) │        ▲
+         ▼                                            │        │ (Streams HTTP 2xx/4xx/5xx Envelope)
+   (01) router ───────────────────────────────────────┼────────┘
+        │ (extracts traceparent, routes to handler)   │
+        ▼                                             │
+   (02) handler (Ingress Delivery Boundary)           │
+        │ • Starts Root Span (traceId: X)             │
+        │ • Structured try/catch block                │
+        ▼                                             │
+   (03) schema (Anti-Corruption Layer)                │ ◄─── (toApi): Serializes Domain Model to wire format
+        │ • (fromApi): Validates closed payload       │      Wraps in Envelope<T> (success, data, meta: traceId)
+        ▼                                             │
+   (04) types (Domain Input DTOs)                     │
+        │ (Passes pure strongly-typed DTO)            │
+        ▼                                             │
+   (06) service (Pure Domain Orchestrator) ───────────┼────► Returns Result<DomainEntity, DomainError> to Handler
+        │ • Governed by (05) context.yml boundary     │      • Commits / Rollbacks UnitOfWork transaction
+        │ • Spawns Child Span (parent: Root Span)     │      • Records span status (StatusCode.OK or ERROR)
+        │ • try/catch domain boundary                 │
+        │                                             │
+        ├─► (07) rules: Evaluates business as data    │
+        ├─► (08) machine: Validates state transitions │
+        └─► (09) workflow: Executes async DAG steps   │
+        │                                             │
+        ▼                                             │
+   (10) Universal Hexagonal Driven Ports Interface    │ ◄─── Returns async Result<DomainEntity, PortError>
+        (Abstract Secondary Outbound Ports)           │
+        │                                             │
+        ▼ (await non-blocking async I/O via Decorators│
+   (11) Resilient Outbound Adapters                   │
+        [withTracing(withCircuitBreaker(withRetry(withCache(Adapter))))]
+        │                                             │
+        ├──────────────────────┬──────────────────────┼──────────────────────┬────────────────────┐
+        ▼                      ▼                      ▼                      ▼                    ▼
+   [Database Port]     [3rd-Party API Port]   [Event / Messaging]    [Infra / Cache / S3]  [Network / Sockets /
+   • (12) queries.sql  • External SDK/REST    • Kafka / RabbitMQ     • Redis Cache         Any External System]
+   • Connection Pool   • AI/LLM, Stripe, etc. • CloudEvents Producer • Blob / S3 Storage   • Custom Drivers
+        │                      │                      │                      │                    │
+        ▼ (async query)        ▼ (async HTTP/gRPC)    ▼ (async publish)      ▼ (async I/O)        ▼ (async socket)
+ ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+                             EXTERNAL WORLD / INFRASTRUCTURE SUBSYSTEMS
+       (Databases, Third-Party APIs, Kafka Brokers, Redis Clusters, Cloud Services, Hardware/OS)
+ ═══════════════════════════════════════════════════════════════════════════════════════════════════════════
+        │ (DB Result Set)      │ (JSON / Proto Res)   │ (Broker Ack / Offset)│ (Cache Hit/Miss)   │ (Socket Buffer)
+        └──────────────────────┴──────────────────────┼──────────────────────┴────────────────────┘
+                                                      │
+                                                      ▲ (Adapter maps raw external responses via ACL to Domain Model)
+                                                      │ (All async exceptions captured in try/catch and recorded on span)
 ```
 
 ---
