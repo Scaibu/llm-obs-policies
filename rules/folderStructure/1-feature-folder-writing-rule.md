@@ -20,21 +20,28 @@ Tier C = always created. Tier X = created only when the trigger applies.
 | # | Role | Path | Tier | Trigger / Purpose |
 |---|------|------|------|-------------------|
 | 1 | context | `context.yml` | C | Durable only: boundaries, invariants, ports |
-| 2 | types | `types/{f}.types` | C | Domain models, input/output DTOs |
-| 3 | schema | `schema/{f}.schema` | C | Validation + `Mapper` (fromApi, toApi) |
-| 4 | queries | `queries/{f}.queries` | C | Named `FLOW_{VERB}_{ENTITY}_{CRITERIA}` queries |
-| 5 | port | `repository/{f}.repository.port` | C | `Repository` interface instance |
-| 6 | repository | `repository/{f}.repository` | C | Adapter executing queries |
-| 7 | rules | `rules/{f}.rules` | X | Any business branching (see rule test below) |
-| 8 | machine | `machines/{f}.machine` | X | Entity has a lifecycle (>= 3 states) |
-| 9 | workflow | `workflows/{f}.workflow` | X | Multi-step automation |
-| 10 | service | `service/{f}.service` | C | Orchestrates port + rules + machine, owns transactions |
-| 11 | index | `index` | C | Public facade: service + public types only |
-| 12 | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Parse, call service, return envelope |
-| 13 | router | `src/api/rest/v1/routers/{f}.router` | C | Mount endpoints |
-| 14 | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Required whenever rules / machine exist |
+| 2 | models / types | `models/{f}.model` / `types/{f}.types` | C | Domain models, input/output DTOs (pure, separate from State & Controller) |
+| 3 | state | `state/{f}.state` | C | Dedicated state file: declares State class with all variables, flags & state holders |
+| 4 | controller | `controller/{f}.controller` | C | Dedicated controller class: manages & mutates State class (separate from models) |
+| 5 | schema | `schema/{f}.schema` | C | Validation + `Mapper` (fromApi, toApi) |
+| 6 | queries | `queries/{f}.queries` | C | Named `FLOW_{VERB}_{ENTITY}_{CRITERIA}` queries |
+| 7 | port | `repository/{f}.repository.port` | C | `Repository` interface instance |
+| 8 | repository | `repository/{f}.repository` | C | Adapter executing queries |
+| 9 | rules | `rules/{f}.rules` | X | Any business branching (see rule test below) |
+| 10 | machine | `machines/{f}.machine` | X | Entity has a lifecycle (>= 3 states) |
+| 11 | workflow | `workflows/{f}.workflow` | X | Multi-step automation |
+| 12 | service | `service/{f}.service` | C | Orchestrates port + rules + machine, owns transactions |
+| 13 | index | `index` | C | Public facade: service + public types only |
+| 14 | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Parse, call service, return envelope |
+| 15 | router | `src/api/rest/v1/routers/{f}.router` | C | Mount endpoints |
+| 16 | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Required whenever rules / machine exist |
 
 Agent scratch notes go in a git-ignored `.agent-notes.md`, never in `context.yml`.
+
+**State-Controller-Model Triad:**
+- **State (`state/{f}.state`):** Exactly one state file declaring the `State` class where all feature variables, flags, counters, and runtime attributes are declared.
+- **Controller (`controller/{f}.controller`):** Dedicated controller class that operates on and mutates the `State` class.
+- **Models (`models/{f}.model` / `types/{f}.types`):** Pure domain models and DTOs, strictly separate from both State and Controller with zero mutation or controller logic.
 
 **Rule test:** "Would a non-engineer change this condition?" Yes -> it belongs in `rules`.
 Guard clauses, null checks, and loop conditions stay in code.
@@ -48,6 +55,9 @@ Result<T, E>              ok(T) | err(E)
 Mapper<Api, Domain>       { fromApi(Api): Result<Domain, ValidationError>; toApi(Domain): Api }
 Repository<T, ID, Q>      { get(ID); find(Q); save(T); remove(ID) }  all return Result
 UnitOfWork                { run(fn): Result }   transaction boundary
+State<T>                  Declares State class holding all variables, flags, and values in one file
+Controller<S>             Drives, mutates, and orchestrates the State class; separate from Model
+Model                     Pure domain entity / DTO definition; separate from State and Controller
 RuleTable<Ctx, Decision>  { rules: Rule<Ctx, Decision>[]; priority; deny-override }
 StateMachine<S, Ev, Ctx>  { initial: S; transitions: Map<S, Map<Ev, {to: S; guard?}>> }
 Workflow<Ctx>             { steps: Step<Ctx>[] }   Step = { id; run(Ctx): Result; dependsOn[] }
@@ -69,6 +79,7 @@ A feature file is a typed instantiation, e.g. `RuleTable<OrderCtx, Discount>`, n
    Exception: a single `WHY:` line is allowed for a non-obvious workaround (vendor bug, race condition), with an ADR link if one exists.
 9. **One file per role.** No duplicate or mixed dot/underscore variants.
 10. **Envelope:** Every handler returns `Envelope<T>` with a W3C trace ID in `meta`.
+11. **State-Controller-Model Triad Separation:** Exactly one state file (`state/{f}.state`) declares the State class containing all variables and fields. One dedicated controller class (`controller/{f}.controller`) manages and mutates that State class. Models (`models/{f}.model` / `types/{f}.types`) must be strictly separate, pure domain data definitions containing zero state-tracking variables and zero controller methods.
 
 ## 4. Agent Protocol (CLI only, never REST for file operations)
 
