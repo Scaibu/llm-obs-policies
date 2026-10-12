@@ -278,42 +278,52 @@ ApiPort<T>                HTTP/transport facade returning Result<T, Error>
 
 ---
 
-# PART V: AGENT CLI PROTOCOL
+# PART V: DIRECT FEATURE CREATION PROTOCOL
 
-```bash
-# ------------------------------------------------------------------------------
-# 1. Backend Feature Scaffolding & Graph Registration
-# ------------------------------------------------------------------------------
-python3 -m src.api.cli.main scaffold-feature <name> [--base-dir src/features] [--package-root <pkg>]
+Feature directories and canonical files are created directly via filesystem operations according to the strict canonical role hierarchy. No external or non-existent CLI scaffolding commands are required.
 
-# Inspect Backend Feature Architecture & Lineage
-python3 -m src.api.cli.main feature-files <name>        # List all canonical feature files
-python3 -m src.api.cli.main feature-map <name>          # Inspect route -> handler -> service -> port mapping
-python3 -m src.api.cli.main file-lineage <file_path>    # Trace upstream/downstream dependency graph
-python3 -m src.api.cli.main impact <target_id>          # Blast radius impact analysis
+### 1. Backend Feature Directory & File Layout
+Directly create the canonical files in their respective paths:
+```
+src/
+├── api/rest/v1/
+│   ├── routers/{f}.router.[ext]              # (01) Ingress routing & W3C traceparent extraction
+│   └── handlers/{f}.handler.[ext]             # (02) Ingress delivery, root try/catch, RFC envelope
+└── features/{f}/
+    ├── schema/{f}.schema.[ext]                # (03) ACL validation, fromApi / toApi
+    ├── types/{f}.types.[ext]                  # (04) Domain DTOs and entity models
+    ├── context.yml                            # (05) Boundary invariants & port declarations
+    ├── service/{f}.service.[ext]              # (06) Pure orchestrator, child span, UoW
+    ├── rules/{f}.rules.[ext]                  # (07) [Tier X] Decision tables as data
+    ├── machines/{f}.machine.[ext]             # (08) [Tier X] Lifecycle state machine
+    ├── workflows/{f}.workflow.[ext]           # (09) [Tier X] Multi-step DAG runner
+    ├── repository/
+    │   ├── {f}.repository.port.[ext]          # (10) Abstract outbound port contract
+    │   └── {f}.repository.[ext]               # (11) Decorated adapter (withTracing, withRetry)
+    ├── queries/{f}.queries.[ext]              # (12) Parameterized FLOW_* SQL queries
+    ├── index.[ext]                            # (13) Public facade (service & public types)
+    └── tests/
+        ├── {f}.rules.test.[ext]               # (14) [Tier X] Business rules unit tests
+        └── {f}.machine.test.[ext]             # (14) [Tier X] State machine transition tests
+```
 
-# ------------------------------------------------------------------------------
-# 2. Frontend Feature Creation (State-Controller-Model Triad)
-# ------------------------------------------------------------------------------
-# Create Central State Class
-python3 -m src.api.cli.main create-file --path src/features/<f>/state/<f>_state.ts --role FeatureState --rel DECLARES_STATE --target src/features/<f>/controller/<f>_controller.ts --direction incoming
-
-# Create State Controller
-python3 -m src.api.cli.main create-file --path src/features/<f>/controller/<f>_controller.ts --role FeatureController --rel CONTROLS_STATE --target src/features/<f>/state/<f>_state.ts --direction outgoing
-
-# Create Pure Domain Model
-python3 -m src.api.cli.main create-file --path src/features/<f>/models/<f>_model.ts --role DomainModel --rel DEFINES_MODEL --target src/features/<f>/controller/<f>_controller.ts --direction incoming
-
-# Create View / UI Component
-python3 -m src.api.cli.main create-file --path src/features/<f>/ui/<f>_view.tsx --role FeatureView --rel RENDERS_STATE --target src/features/<f>/state/<f>_state.ts --direction outgoing
-
-# Connect View to Controller
-python3 -m src.api.cli.main link-file --source src/features/<f>/ui/<f>_view.tsx --rel DISPATCHES_ACTION --target src/features/<f>/controller/<f>_controller.ts
+### 2. Frontend Feature Creation (State-Controller-Model Triad)
+Directly create the client files adhering to the state triad:
+```
+src/features/{f}/
+├── ui/{f}.view.[ext]                          # (01) Presentation component; consumes State, dispatches actions
+├── controller/{f}.controller.[ext]            # (02) State controller; try/catch, mutates State, calls Adapter
+├── state/{f}.state.[ext]                      # (03) Dedicated State class centralizing all feature variables
+├── models/{f}.model.[ext]                     # (04) Pure domain models & DTOs (immutable)
+├── adapter/{f}.adapter.[ext]                  # (05) Client API adapter calling backend within trace context
+└── tests/
+    ├── {f}.controller.test.[ext]              # (06) Controller unit tests
+    └── {f}.state.test.[ext]                   # (06) State transition & mutation tests
 ```
 
 ### Definition of Done
 A feature task is complete only when:
 1. All canonical roles for the designated environment (Backend or Frontend) exist without cross-paradigm contamination.
-2. Type check passes with zero errors.
-3. Unit tests pass (rules/machine tests for backend; controller/state tests for frontend).
-4. Knowledge graph is synchronized.
+2. Inversion of Control is preserved: Service imports only abstract Port contracts; Controller drives State.
+3. Type check passes with zero errors.
+4. Unit tests pass (rules/machine tests for backend; controller/state tests for frontend).
