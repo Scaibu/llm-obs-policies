@@ -40,7 +40,7 @@ policies/rules/
 │   ├── srp.md
 │   └── typecasting-rules.md
 ├── database/
-│   └── migration.md
+│   └── migrations/01-schema-migrations-and-code-guidelines.md
 ├── folderStructure/
 │   ├── api-structure.md
 │   ├── feature-anatomy.md

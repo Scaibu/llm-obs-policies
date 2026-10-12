@@ -122,7 +122,7 @@ Short paragraph with overall assessment.
 | `policies/rules/codeQuality/function-parameter-limit-rule.md` | Param limits |
 | `policies/rules/codeQuality/typecasting-rules.md` | Type safety |
 | `policies/rules/codeQuality/coupling-strength-spectrum.md` | Coupling taxonomy |
-| `policies/rules/database/migration.md` | Migration rules |
+| `policies/rules/database/migrations/01-schema-migrations-and-code-guidelines.md` | Migration rules |
 | `policies/rules/git/commit-message-git.md` | Commit format |
 | `policies/rules/git/git-branch-naming-rules.md` | Branch naming |
 | `policies/rules/mcp-agent-protocols.md` | Agent protocol isolation |

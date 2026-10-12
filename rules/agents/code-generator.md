@@ -260,7 +260,7 @@ workers:
 | API work | `policies/rules/folderStructure/api-structure.md` | New endpoints |
 | Worker work | `policies/rules/worker/core-rules.md` | New workers |
 | Temporal work | `policies/rules/worker/listOfWorkersTypes/temporal-workflow-rules.md` | Temporal code |
-| DB work | `policies/rules/database/migration.md` | Schema changes |
+| DB work | `policies/rules/database/migrations/01-schema-migrations-and-code-guidelines.md` | Schema changes |
 | Commit | `policies/rules/git/commit-message-git.md` | Every commit |
 
 ---

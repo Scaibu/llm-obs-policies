@@ -65,7 +65,7 @@
 - **Caching Patterns**:
   - `Cache-Aside`: Application reads cache; on miss, reads DB and updates cache with TTL.
   - `Cache Stampede Prevention`: Probabilistic early expiration (XFetch algorithm) or single-flight mutex locking.
-  - See [caching.md](file:///home/btpl-lap-22/live/llm-observability-platform/policies/rules/database/caching.md) for caching mechanics and [data-normalization.md](file:///home/btpl-lap-22/live/llm-observability-platform/policies/rules/database/data-normalization.md) for normalization standards.
+  - See [04-caching-strategies-and-patterns.md](file:///home/btpl-lap-22/live/llm-obs-infra/policies/rules/database/architecture-and-modeling/04-caching-strategies-and-patterns.md) for caching mechanics and [01-data-normalization-standards.md](file:///home/btpl-lap-22/live/llm-obs-infra/policies/rules/database/architecture-and-modeling/01-data-normalization-standards.md) for normalization standards.
 
 ### 8. Backup, Disaster Recovery & OLTP vs OLAP
 - **RPO (Recovery Point Objective)**: Maximum acceptable data loss duration.

@@ -1,4 +1,4 @@
-Good call — let me understand what "generic + actually fast" means for your context before writing 40 queries.# Generic High-Performance SQL — Execution-Proven Patterns
+# Generic High-Performance SQL — Execution-Proven Patterns
 
 > **How to read this:** Every query is a template. Replace `your_table`, `your_column` with your real names. Each pattern solves a real execution problem, not a theoretical one.
 
