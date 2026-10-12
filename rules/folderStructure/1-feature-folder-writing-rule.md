@@ -17,7 +17,7 @@ enforcement: "Absolute (Zero-Omission Policy)"
 When creating or refactoring any feature, create files in this exact sequential order:
 
 1. context.yml
-Define feature domain, responsibilities, inbound handlers, outbound ports, and dependency boundaries.
+which will hold agent related working memories 
 
 2. types/{feature}.types.[ext]
 Define feature-local domain models, input DTOs, output DTOs, and type definitions.
@@ -36,8 +36,9 @@ Implement the concrete repository adapter that executes the named SQL queries ag
 
 7. rules/{feature}.rules.[ext]
 Define business logic decision tables as structured data with priority weights and deny-override semantics.
+- all if else logic will goes here 
 
-8. machines/{feature}.machine.[ext]
+8. machines/{feature}.machine.[ext] 
 Define the state machine lifecycle DAG with deterministic transition triggers and guard conditions.
 
 9. workflows/{feature}.workflow.[ext]
