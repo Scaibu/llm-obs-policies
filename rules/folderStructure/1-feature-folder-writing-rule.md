@@ -17,80 +17,88 @@ contract_version: "2.1"
 
 # PART I: BACKEND FEATURE STRUCTURE (Stateless Hexagonal Core)
 
-## 1. Backend Role Table
+## 1. Backend Role Table & Sequential Logical Flow
 
 Naming: `{feature}.{role}.[ext]` (`{feature}_{role}` for snake_case languages).  
-Creation and population order = table order.  
-Tier C = always created. Tier X = created only when the trigger applies.
+Tier C = always created. Tier X = created only when the trigger applies.  
+The **Step #** indicates the logical request and execution flow sequence.
 
-| # | Role | Path | Tier | Trigger / Purpose |
-|---|------|------|------|-------------------|
-| 1 | context | `context.yml` | C | Durable only: boundaries, invariants, required ports |
-| 2 | types | `types/{f}.types` | C | Domain models, input/output DTOs |
-| 3 | schema | `schema/{f}.schema` | C | Validation + Anti-Corruption Layer `Mapper` (fromApi, toApi) |
-| 4 | queries | `queries/{f}.queries` | C | Named parameterized `FLOW_{VERB}_{ENTITY}_{CRITERIA}` queries |
-| 5 | port | `repository/{f}.repository.port` | C | Abstract hexagonal `Repository` port interface |
-| 6 | repository | `repository/{f}.repository` | C | Concrete persistence adapter executing queries against DB pool |
-| 7 | rules | `rules/{f}.rules` | X | Business logic decision tables evaluated as data (Tier X) |
-| 8 | machine | `machines/{f}.machine` | X | Deterministic state machine DAG for entity lifecycle (>= 3 states) |
-| 9 | workflow | `workflows/{f}.workflow` | X | Multi-step DAG automation step sequence (Tier X) |
-| 10 | service | `service/{f}.service` | C | Pure domain orchestrator: owns `UnitOfWork` transactions; zero HTTP/DB imports |
-| 11 | index | `index` | C | Public facade: exports domain service and public types only |
-| 12 | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Parse request, invoke schema ACL, call service, return RFC Envelope |
-| 13 | router | `src/api/rest/v1/routers/{f}.router` | C | Mount endpoints onto API gateway router |
-| 14 | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Required whenever rules / machine exist |
+| Step # | Role | Path | Tier | Trigger / Purpose |
+|:------:|------|------|:----:|-------------------|
+| **01** | router | `src/api/rest/v1/routers/{f}.router` | C | Ingress routing: mounts endpoints, extracts W3C `traceparent` |
+| **02** | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Ingress delivery: parses request, runs try/catch, returns RFC Envelope |
+| **03** | schema | `schema/{f}.schema` | C | Validation + Anti-Corruption Layer `Mapper` (fromApi, toApi) |
+| **04** | types | `types/{f}.types` | C | Pure domain models, input/output DTOs |
+| **05** | context | `context.yml` | C | Invariants, domain boundaries, required hexagonal ports |
+| **06** | service | `service/{f}.service` | C | Domain orchestrator: owns try/catch, spans, `UnitOfWork` transactions |
+| **07** | rules | `rules/{f}.rules` | X | Business logic decision tables evaluated as structured data |
+| **08** | machine | `machines/{f}.machine` | X | Deterministic state machine DAG for entity lifecycles (>= 3 states) |
+| **09** | workflow | `workflows/{f}.workflow` | X | Multi-step automation DAG steps traced under root span |
+| **10** | port | `repository/{f}.repository.port` | C | Abstract hexagonal domain port interface |
+| **11** | repository | `repository/{f}.repository` | C | Database persistence adapter executing queries against pool |
+| **12** | queries | `queries/{f}.queries` | C | Named parameterized `FLOW_{VERB}_{ENTITY}_{CRITERIA}` SQL queries |
+| **13** | index | `index` | C | Public facade: exports domain service and public types only |
+| **14** | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Exhaustive unit tests for business rules and state machines |
 
 Agent scratch notes go in a git-ignored `.agent-notes.md`, never in `context.yml`.
 
-## 2. Backend Flow & File Relationship DAG
+## 2. Backend Flow & Sequential Logical DAG
+
+Every request traverses this exact logical step sequence under a **single shared OpenTelemetry trace context**:
 
 ```
-[Inbound Client Request]
+[Inbound Client Request with W3C traceparent]
           │
           ▼
-13. router ──(DELEGATES_TO)──► 12. handler ──(INVOKES_ACL)──► 3. schema (fromApi/toApi)
-                                    │                             │
-                                    │                             ▼
-                                    │                      2. types (Domain DTOs)
-                                    │
-                         (INVOKES_DOMAIN)
-                                    ▼
-                             10. service ◄──(GOVERNS_BOUNDARY)── 1. context.yml
-                                 │   ▲
-                                 │   └───(EXPORTS_FACADE)──── 11. index (Public Facade)
-                                 │
-             ┌───────────────────┼───────────────────┐
-             │                   │                   │
-             ▼                   ▼                   ▼
-      7. rules (as data)   8. machine (lifecycle)  9. workflow (DAG steps)
-             │
-             ▼
-      5. repository.port ◄──(CONSUMES_PORT)── 10. service
-             ▲
-             │ (IMPLEMENTED_BY)
-             │
-      6. repository (Adapter)
-             │ (EXECUTES_QUERY)
-             ▼
-      4. queries (FLOW_* SQL)
+   (01) router ──────(DELEGATES_TO)────► (02) handler ───(INVOKES_ACL)───► (03) schema
+   (Ingress Route)                       (Try/Catch + Root Span)           (fromApi/toApi)
+                                                │                                 │
+                                                │                                 ▼
+                                                │                           (04) types
+                                                │                           (Domain DTOs)
+                                     (INVOKES_DOMAIN)
+                                                ▼
+                                         (06) service ◄──(GOVERNS_BOUNDARY)── (05) context.yml
+                                     (Try/Catch + Child Span)
+                                           │        ▲
+                                           │        └──(EXPORTS_FACADE)─── (13) index
+                                           │
+                    ┌──────────────────────┼──────────────────────┐
+                    │                      │                      │
+                    ▼                      ▼                      ▼
+               (07) rules             (08) machine           (09) workflow
+            (Business as Data)      (Lifecycle States)     (DAG Step Runner)
+                    │
+                    ▼
+          (10) repository.port ◄──(CONSUMES_PORT)── (06) service
+                    ▲
+                    │ (IMPLEMENTED_BY)
+                    │
+          (11) repository (Adapter)
+                    │ (EXECUTES_QUERY)
+                    ▼
+          (12) queries (FLOW_* SQL)
+                    │
+                    ▼
+          [Database Connection Pool]
 ```
 
 ---
 
 # PART II: FRONTEND FEATURE STRUCTURE (State-Controller-Model Triad)
 
-## 1. Frontend Role Table
+## 1. Frontend Role Table & Sequential Logical Flow
 
 Frontend features manage interactive client-side state, user gestures, and presentation rendering.
 
-| # | Role | Path | Tier | Trigger / Purpose |
-|---|------|------|------|-------------------|
-| 1 | model | `models/{f}.model` | C | Pure domain models & entity definitions (strictly separate from State & Controller) |
-| 2 | state | `state/{f}.state` | C | Dedicated single state file: declares `State` class centralizing all variables, flags, counters |
-| 3 | controller | `controller/{f}.controller` | C | Dedicated controller class: drives & mutates `State` class upon user/network events |
-| 4 | view / ui | `ui/{f}.view` | C | Presentation UI components: consumes `State` for rendering; delegates user actions to `Controller` |
-| 5 | adapter | `adapter/{f}.adapter` | C | Client API / HTTP adapter calling backend endpoints and returning domain models |
-| 6 | tests | `tests/{f}.controller.test`, `tests/{f}.state.test` | C | Unit tests verifying state mutations, actions, and controller workflows |
+| Step # | Role | Path | Tier | Trigger / Purpose |
+|:------:|------|------|:----:|-------------------|
+| **01** | view / ui | `ui/{f}.view` | C | Presentation UI components: consumes `State`, dispatches actions |
+| **02** | controller | `controller/{f}.controller` | C | Dedicated controller class: try/catch, mutates `State`, calls adapter |
+| **03** | state | `state/{f}.state` | C | Dedicated single state file: declares `State` class centralizing all variables |
+| **04** | model | `models/{f}.model` | C | Pure domain models & entity definitions (separate from State & Controller) |
+| **05** | adapter | `adapter/{f}.adapter` | C | Client API / HTTP adapter calling backend endpoints within trace space |
+| **06** | tests | `tests/{f}.controller.test`, `tests/{f}.state.test` | C | Unit tests verifying state mutations, actions, and controller workflows |
 
 ## 2. Frontend Flow & State Triad DAG
 
@@ -98,24 +106,25 @@ Frontend features manage interactive client-side state, user gestures, and prese
    [User Gesture / Event]
              │
              ▼
-         4. view (UI)
+      (01) view (UI)
              │
              │ (DISPATCHES_ACTION)
              ▼
-       3. controller ──(CALLS_API)──► 5. adapter ──► [Backend REST/gRPC API]
-             │                              │
-             │ (MUTATES_STATE)              ▼
-             ▼                       1. models (Pure Data Models)
-         2. state (Central State Class)
+      (02) controller ───────(CALLS_API)──────► (05) adapter ──► [Backend REST/gRPC API]
+    (Try/Catch + Child Span)                           │
+             │                                         │
+             │ (MUTATES_STATE)                         ▼
+             ▼                                  (04) models (Pure Data Models)
+      (03) state (Central State Class)
              │
              │ (EMITS_STATE_CHANGE / REACTIVE_RE-RENDER)
              ▼
-         4. view (UI)
+      (01) view (UI)
 ```
 
 ### State-Controller-Model Triad Responsibilities:
 - **`state/{f}.state`:** Exactly **one state file** declaring the `State` class. Centralizes **all feature variables**, reactive values, flags (`isLoading`, `hasError`, `isDirty`), and form states.
-- **`controller/{f}.controller`:** Dedicated controller class for the state class. Handles incoming events, coordinates async operations, invokes API adapters, and executes state mutations.
+- **`controller/{f}.controller`:** Dedicated controller class for the state class. Handles incoming events, coordinates async operations, invokes API adapters, and executes state mutations within structured `try/catch` and child trace spans.
 - **`models/{f}.model`:** Pure, immutable data structures and DTOs. Strictly separated from State and Controller, containing zero state-tracking variables and zero controller methods.
 
 ---
@@ -158,6 +167,18 @@ ApiPort<T>                HTTP/transport facade returning Result<T, Error>
 5. **Zero Raw SQL (Backend):** SQL queries exist solely inside `queries/{f}.queries` as named `FLOW_*` constants.
 6. **Zero Inline Comments:** Document algorithm blueprint at the top of the file in the header docblock. 100% comment-free function bodies.
 7. **One File Per Role:** Exactly one file per canonical role. No duplicate or mixed naming conventions.
+8. **Shared Common Trace Space (End-to-End Distributed Tracing):**
+   - Every operation, state mutation, network call, and database query MUST share a single, unbroken W3C Trace Context (`traceparent`, `traceId`, `spanId`).
+   - The ingress boundary (`router`/`handler` in backend; user event in frontend) extracts or initializes the root span.
+   - Every sub-layer (`service`, `rules`, `machine`, `workflow`, `repository`, `controller`) MUST spawn a child span under the same `traceId`.
+   - The active `traceId` must be stamped onto all logs and echoed in the RFC Envelope (`meta.traceId`) so any operation can be inspected in a unified trace waterfall.
+9. **Strict Try-Catch & Error Resilience Invariant:**
+   - Every ingress and orchestration boundary (`handler`, `service`, `controller`) MUST wrap execution in structured `try / catch` blocks.
+   - When an exception occurs:
+     1. Record the exception on the active OpenTelemetry span (`span.record_exception(err)` and `span.set_status(Status.ERROR)`).
+     2. Map the error into a standardized domain `Result.err()` or typed error DTO.
+     3. Return the RFC standardized response envelope (`success: false`, `statusCode`, `error: { code, message, retryable, details }`, `meta: { traceId }`).
+     4. Raw stack traces, internal database exception strings, and secret credentials must NEVER leak to the caller.
 
 ---
 
