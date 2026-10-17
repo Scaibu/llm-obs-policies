@@ -231,61 +231,61 @@ Environment manifests and schema validations. Zero runtime IO or secret-fetching
 
 ---
 
-### 3.3 `database/` — The Persistence Heart (Specifications & Topologies)
+### 3.3 `database/` — The Persistence Heart (Consolidated Database Hub)
 
-All declarative storage, topology, consensus, and maintenance definitions live at sub-package root.
+Consolidated declarative storage migrations, seeds, engine, and topology configuration.
 
 | Path | File Name Formula | Role & Contents |
 |---|---|---|
-| `database/migrations/` | `{NNNN}_{action}_{entity}.sql` | Upward DDL schema migration script. |
-| `database/migrations/` | `{NNNN}_{action}_{entity}.rollback.sql` | Matching DDL rollback script. |
-| `database/rls/` | `{NNNN}_{entity}_isolation_rls.sql` | Row Level Security multi-tenant isolation rules. |
-| `database/indexes/` | `{NNNN}_{entity}_performance_indexes.sql`| Foreign keys, composite B-Tree and GIN indexes. |
-| `database/partitioning/`| `range_partitioning.yaml` | Range boundary split points and auto-split thresholds. |
-| `database/partitioning/`| `hash_partitioning.yaml` | Consistent hash ring positions and virtual node counts. |
-| `database/partitioning/`| `directory_partitioning.json` | Explicit key-to-partition routing directory entries. |
-| `database/storage_engine/`| `lsm_storage.yaml` | Memtable flush sizes, SSTable levels and compaction policies. |
-| `database/storage_engine/`| `tiered_storage.yaml` | Hot/warm/cold idle thresholds and storage migration rules. |
-| `database/storage_engine/`| `hot_cold_archiving.sql` | Bimodal hot-to-cold store scheduled archiving purge sweep. |
-| `database/storage_engine/`| `polyglot_dispatch.json` | Workload-to-engine routing (relational, search, vector, KV). |
-| `database/replication/` | `topology_spec.yaml` | Topology declarations (Leader-Follower, Active-Active, Failover). |
-| `database/consensus/` | `raft_consensus.yaml` | Raft election timeout, term tracking and entry commit rules. |
-| `database/quorums/` | `quorum_config.yaml` | Quorum rules ($W + R > N$, majority write constraints). |
-| `database/quorums/` | `ack_policy.yaml` | Sync, async, and semi-sync $k$-ack acknowledgment rules. |
-| `database/cdc/` | `cdc_publisher_spec.json` | WAL tailing stream and Kafka event mapping spec. |
-| `database/sharding/` | `shard_hash_ring.yaml` | Shard key routing hash ring and node boundaries. |
-| `database/crdts/` | `crdt_definitions.yaml` | PN-Counter, OR-Set, and LWW state-based merge schemas. |
-| `database/anti_entropy/` | `merkle_tree_sync.sql` | Merkle tree hash diff sweep and anti-entropy repair scripts. |
-| `database/fencing/` | `fencing_epoch_failover.sql` | Monotonic epoch fencing validation and writer promotion script. |
-| `database/retention/` | `soft_delete_30day_purge.sql` | Scheduled 30-day compliance retention and soft-delete purge. |
-| `database/seeds/` | `{env}.seed.sql` | Deterministic seed fixtures for development and automated tests. |
 | `database/` | `schema.lock` | Immutable SHA256 cryptographic lockfile of applied migrations. |
+| `database/migrations/sql/` | `.gitkeep` | Declarative forward and rollback SQL migrations. |
+| `database/migrations/cypher/` | `.gitkeep` | Declarative graph schema Cypher migrations. |
+| `database/seeds/` | `dev_seeds.sql`, `test_seeds.sql` | Deterministic seed fixtures for development and automated tests. |
+| `database/engine/` | `connection.py` | Primary and replica connection pool lifecycle. |
+| `database/engine/` | `transaction.py` | Unit of Work / atomic transaction coordinator (commit & rollback). |
+| `database/engine/` | `executor.py` | Parameterized SQL query executor with OpenTelemetry span tracing. |
+| `database/engine/` | `runner.py` | Migration runner verifying checksums against schema.lock. |
+| `database/config/` | `rls.sql` | Row Level Security multi-tenant isolation rules. |
+| `database/config/` | `topology.yaml` | Replication topology (primary/replica) and read/write quorum rules. |
 
 ---
 
-### 3.4 `messaging/` — The Streaming Heart (Kafka Specifications)
+### 3.4 `messaging/` — The Streaming Heart (Consolidated Event Hub)
 
-Kafka topic provisioning, schema registry, DLQ policies, and consumer group declarations.
+Declarative Kafka topic provisioning, schema registry, DLQ policies, and runtime messaging engine.
 
 | Path | File Name Formula | Role & Contents |
 |---|---|---|
-| `messaging/topics/` | `{NNNN}_create_{entity}_events.json` | Topic spec: partitions, retention ms, `min.insync.replicas`. |
-| `messaging/topics/` | `{NNNN}_create_{entity}_events.rollback.json` | Topic de-provisioning and cleanup rollback spec. |
-| `messaging/schema-registry/`| `{entity}_events.v{N}.json` | Schema registry contract payload (JSON Schema / Avro). |
-| `messaging/dlq/` | `dlq_policy.yaml` | Dead Letter Queue retry backoff, max retries, and alert rules. |
-| `messaging/subscriptions/`| `consumer_groups.yaml` | Consumer group IDs, topic subscriptions, and offset commit modes. |
-| `messaging/` | `topics.lock` | Immutable lockfile of provisioned Kafka topics. |
+| `messaging/` | `topics.lock` | Immutable SHA256 cryptographic lockfile of provisioned Kafka topics. |
+| `messaging/topics/` | `topics.yaml` | Declarative topic provisioning (partitions, replicas, retention ms). |
+| `messaging/schemas/`| `.gitkeep` | Event schema contracts (Avro, Protobuf, JSON Schema). |
+| `messaging/policies/` | `dlq_policy.yaml` | Dead Letter Queue retry backoff, max retries, and alert rules. |
+| `messaging/engine/client/` | `connection_pool.py`, `cluster_health.py` | Broker pool management and cluster metadata health. |
+| `messaging/engine/producers/` | `event_publisher.py`, `envelope_builder.py` | CloudEvents publisher and W3C traceparent envelope builder. |
+| `messaging/engine/consumers/` | `consumer_group.py`, `commit_manager.py` | Consumer worker pool, partition rebalance, and offset coordinator. |
+| `messaging/engine/pipeline/` | `tracing_interceptor.py`, `retry_policy.py`, `dead_letter_router.py` | OpenTelemetry span interceptors, retry jitter, and DLQ poison routing. |
 
 ---
 
-### 3.5 `deploy/` — Deployment & Infrastructure Manifests
+### 3.5 `deploy/` — Multi-Target Deployment & Infrastructure Hub
 
-Zero business code. Only container orchestration and deployment configurations.
+Zero business code. Consolidated Docker images, Kubernetes manifests, Helm charts, ArgoCD GitOps, Stateful/Stateless Terraform modules, topology, and release scripts.
 
 | Path | File Name Formula | Role & Contents |
 |---|---|---|
-| `deploy/k8s/` | `deployment.yaml`, `service.yaml`, `hpa.yaml`, `configmap.yaml` | Kubernetes core resources. |
-| `deploy/helm/` | `Chart.yaml`, `values.yaml`, `values.{env}.yaml` | Helm packaging and environment values charts. |
+| `deploy/docker/base/` | `Dockerfile.base`, `registry.yaml` | Common multi-stage base runtime and container registry auth endpoints. |
+| `deploy/docker/service/` | `Dockerfile`, `Dockerfile.dev` | Service production and local development hot-reloading images. |
+| `deploy/docker/compose/` | `docker-compose.{single,polyglot,infra}.yml` | Standalone, polyglot mesh, and backing dependency runners. |
+| `deploy/k8s/base/` | `deployment.yaml`, `service.yaml`, `hpa.yaml`, `configmap.yaml`, `ingress.yaml`, `pdb.yaml` | Kubernetes core resources. |
+| `deploy/k8s/overlays/` | `{local-polyglot,dev,staging,prod}/kustomization.yaml` | Kustomize overlays per environment. |
+| `deploy/helm/` | `Chart.yaml`, `Chart.lock`, `values.yaml`, `env-values/values.{dev,staging,prod}.yaml` | Helm chart metadata, dependencies, and environment overrides. |
+| `deploy/helm/templates/` | `_helpers.tpl`, `deployment.yaml`, `service.yaml`, `ingress.yaml`, `hpa.yaml`, `pdb.yaml` | Parameterized Kubernetes templates. |
+| `deploy/helm/packaging/` | `package.sh`, `publish.sh` | Helm OCI packaging and registry publishing scripts. |
+| `deploy/argocd/` | `project.yaml`, `applicationset.yaml`, `applications/app.{dev,staging,prod}.yaml` | ArgoCD AppProject, ApplicationSet, and environment sync definitions. |
+| `deploy/terraform/` | `backend.tf`, `versions.tf`, `main.tf`, `variables.tf`, `outputs.tf`, `environments/*.tfvars` | Root Terraform composition and remote state locking. |
+| `deploy/terraform/modules/` | `stateful/*.tf`, `stateless/*.tf`, `security/*.tf` | Stateful data, stateless compute, and IAM/security modules. |
+| `deploy/topology/` | `network_map.yaml` | Polyglot service discovery and port mappings. |
+| `deploy/release/` | `deploy.sh`, `rollback.sh` | Unified release runner and emergency rollback automation. |
 
 ---
 
@@ -341,37 +341,13 @@ Every feature directory implements the **5 Immutable Data Pillars** plus clean p
 
 ### 3.8 `src/infra/` — Centralized Infrastructure Runtime Engines
 
-All reusable infrastructure adapters, connection pools, and client SDKs. Features NEVER write custom driver connections.
+All reusable infrastructure adapters and generated client SDKs. (Database and Messaging runtime engines are centralized in `database/engine/` and `messaging/engine/`).
 
 ```
 src/infra/
 ├── config/
 │   ├── config.loader.ts                 - Class: StronglyTypedConfigLoader
 │   └── env.schema.ts                    - Class: EnvironmentSchemaBinding
-│
-├── database/
-│   ├── pool/connection.pool.ts          - Class: DatabaseConnectionPool
-│   ├── factory/client.factory.ts        - Class: DatabaseClientFactory
-│   ├── transaction/transaction.manager.ts - Class: DatabaseTransactionManager
-│   ├── executor/query.executor.ts       - Class: SqlQueryExecutor
-│   ├── middleware/query.middleware.ts   - Class: DatabaseMiddlewarePipeline
-│   ├── migrations/migration.runner.ts   - Class: DatabaseMigrationRunner
-│   ├── tracing/db.tracer.ts             - Class: DatabaseOpenTelemetryTracer
-│   └── adapters/{vendor}.adapter.ts     - Class: PostgresDriverAdapter, RedisDriverAdapter
-│
-├── messaging/
-│   ├── broker/kafka.broker.ts           - Class: KafkaBrokerClient
-│   ├── factory/connection.factory.ts    - Class: KafkaConnectionFactory
-│   ├── producers/event.producer.ts      - Class: TypedKafkaEventProducer
-│   ├── consumers/event.consumer.ts      - Class: TypedKafkaEventConsumer
-│   ├── middleware/messaging.middleware.ts - Class: MessagingMiddlewarePipeline
-│   ├── topics/topic.provisioner.ts      - Class: KafkaTopicProvisioner
-│   ├── migrations/topic.migrator.ts     - Class: KafkaTopicMigrationRunner
-│   ├── tracing/trace.propagator.ts      - Class: KafkaTraceContextPropagator
-│   └── cqrs/
-│       ├── command.handler.ts           - Class: CqrsCommandDispatcher
-│       ├── projection.store.ts          - Class: MaterializedProjectionStore
-│       └── query.selector.ts            - Class: CqrsQuerySelector
 │
 └── clients/
     └── {upstream-service}/v1/

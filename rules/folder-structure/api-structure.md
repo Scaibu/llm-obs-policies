@@ -136,147 +136,158 @@ The complete structural reference tree for all polyglot sub-packages and 10-role
 #### 1. Complete Unified Package Directory Tree
 ```
 {package-name}/
-├── contracts/
-│   ├── .gitkeep
-│   ├── openapi/
-│   │   ├── .gitkeep
-│   │   ├── v1.yaml
-│   │   ├── v2.yaml
-│   │   └── changelog.md
-│   ├── graphql/
-│   │   ├── .gitkeep
-│   │   ├── v1.graphql
-│   │   └── changelog.md
-│   ├── proto/
-│   │   ├── .gitkeep
-│   │   └── v1/
-│   ├── asyncapi/
-│   │   ├── .gitkeep
-│   │   └── v1.yaml
-│   ├── json-schema/
-│   │   ├── .gitkeep
-│   │   └── {event}/
-│   │       └── v1.json
-│   └── changelog.md
-│
-├── config/
-│   ├── .gitkeep
-│   ├── env.schema
-│   ├── default.yaml
-│   ├── development.yaml
-│   ├── production.yaml
-│   ├── test.yaml
-│   └── feature-flags.yaml
-│
 ├── database/
-│   ├── .gitkeep
-│   ├── migrations/
-│   │   ├── .gitkeep
-│   │   ├── 0001_initial_schema.sql
-│   │   └── 0001_initial_schema.rollback.sql
-│   ├── rls/
-│   │   ├── .gitkeep
-│   │   └── 0001_tenant_isolation_rls.sql
-│   ├── indexes/
-│   │   ├── .gitkeep
-│   │   └── 0001_performance_indexes.sql
-│   ├── partitioning/
-│   │   ├── .gitkeep
-│   │   ├── range_partitioning.yaml
-│   │   ├── hash_partitioning.yaml
-│   │   └── directory_partitioning.json
-│   ├── storage_engine/
-│   │   ├── .gitkeep
-│   │   ├── lsm_storage.yaml
-│   │   ├── tiered_storage.yaml
-│   │   ├── hot_cold_archiving.sql
-│   │   └── polyglot_dispatch.json
-│   ├── replication/
-│   │   ├── .gitkeep
-│   │   ├── topology_spec.yaml
-│   │   └── chain_replication.yaml
-│   ├── consensus/
-│   │   ├── .gitkeep
-│   │   ├── raft_consensus.yaml
-│   │   └── wal_shipping.yaml
-│   ├── quorums/
-│   │   ├── .gitkeep
-│   │   ├── quorum_config.yaml
-│   │   └── ack_policy.yaml
-│   ├── cdc/
-│   │   ├── .gitkeep
-│   │   ├── cdc_publisher_spec.json
-│   │   └── cdc_sink_spec.json
-│   ├── sharding/
-│   │   ├── .gitkeep
-│   │   └── shard_hash_ring.yaml
-│   ├── crdts/
-│   │   ├── .gitkeep
-│   │   ├── crdt_definitions.yaml
-│   │   └── hybrid_clock.yaml
-│   ├── anti_entropy/
-│   │   ├── .gitkeep
-│   │   └── merkle_tree_sync.sql
-│   ├── fencing/
-│   │   ├── .gitkeep
-│   │   └── fencing_epoch_failover.sql
-│   ├── retention/
-│   │   ├── .gitkeep
-│   │   └── soft_delete_30day_purge.sql
-│   ├── seeds/
-│   │   ├── .gitkeep
-│   │   ├── dev.seed.sql
-│   │   └── test.seed.sql
-│   └── schema.lock
+│   ├── schema.lock                               # SHA256 checksum lockfile of applied migrations
+│   ├── migrations/                               # Declarative schema migrations
+│   │   ├── sql/
+│   │   │   └── .gitkeep
+│   │   └── cypher/
+│   │       └── .gitkeep
+│   ├── seeds/                                    # Deterministic environment seed fixtures
+│   │   ├── dev_seeds.sql
+│   │   └── test_seeds.sql
+│   ├── engine/                                   # Centralized database runtime engine
+│   │   ├── connection.py                         # Connection pooling & client lifecycle
+│   │   ├── transaction.py                        # Atomic Unit of Work transaction runner
+│   │   ├── executor.py                           # Parameterized query executor with tracing
+│   │   └── runner.py                             # Migration runner verifying checksums
+│   └── config/                                   # Database tenant isolation & topology config
+│       ├── rls.sql                               # Row Level Security isolation rules
+│       └── topology.yaml                         # Topology specs & read/write quorum rules
 │
 ├── messaging/
-│   ├── .gitkeep
+│   ├── topics.lock                               # Cryptographic checksum lockfile of provisioned topics
 │   ├── topics/
-│   │   ├── .gitkeep
-│   │   ├── 0001_create_user_events.json
-│   │   └── 0001_create_user_events.rollback.json
-│   ├── schema-registry/
-│   │   ├── .gitkeep
-│   │   └── user_events.v1.json
-│   ├── dlq/
-│   │   ├── .gitkeep
-│   │   └── dlq_policy.yaml
-│   ├── subscriptions/
-│   │   ├── .gitkeep
-│   │   └── consumer_groups.yaml
-│   └── topics.lock
+│   │   └── topics.yaml                           # Declarative topic provisioning manifests
+│   ├── schemas/
+│   │   └── .gitkeep                              # Event schema contracts (Avro, Protobuf, JSON Schema)
+│   ├── policies/
+│   │   └── dlq_policy.yaml                       # Dead Letter Queue & retry policies
+│   └── engine/                                   # Centralized messaging runtime engine
+│       ├── client/
+│       │   ├── connection_pool.py
+│       │   └── cluster_health.py
+│       ├── producers/
+│       │   ├── event_publisher.py
+│       │   └── envelope_builder.py
+│       ├── consumers/
+│       │   ├── consumer_group.py
+│       │   └── commit_manager.py
+│       └── pipeline/
+│           ├── tracing_interceptor.py
+│           ├── retry_policy.py
+│           └── dead_letter_router.py
 │
 ├── deploy/
-│   ├── .gitkeep
+│   ├── docker/
+│   │   ├── base/
+│   │   │   ├── Dockerfile.base
+│   │   │   └── registry.yaml
+│   │   ├── service/
+│   │   │   ├── Dockerfile
+│   │   │   └── Dockerfile.dev
+│   │   └── compose/
+│   │       ├── docker-compose.single.yml
+│   │       ├── docker-compose.polyglot.yml
+│   │       └── docker-compose.infra.yml
 │   ├── k8s/
-│   │   ├── deployment.yaml
-│   │   ├── service.yaml
-│   │   ├── hpa.yaml
-│   │   └── configmap.yaml
-│   └── helm/
-│       ├── Chart.yaml
-│       ├── values.yaml
-│       └── values.{env}.yaml
+│   │   ├── base/
+│   │   │   ├── deployment.yaml
+│   │   │   ├── service.yaml
+│   │   │   ├── hpa.yaml
+│   │   │   ├── configmap.yaml
+│   │   │   ├── ingress.yaml
+│   │   │   └── pdb.yaml
+│   │   └── overlays/
+│   │       ├── local-polyglot/kustomization.yaml
+│   │       ├── dev/kustomization.yaml
+│   │       ├── staging/kustomization.yaml
+│   │       └── prod/kustomization.yaml
+│   ├── helm/
+│   │   ├── Chart.yaml
+│   │   ├── Chart.lock
+│   │   ├── values.yaml
+│   │   ├── env-values/
+│   │   │   ├── values.dev.yaml
+│   │   │   ├── values.staging.yaml
+│   │   │   └── values.prod.yaml
+│   │   ├── templates/
+│   │   │   ├── _helpers.tpl
+│   │   │   ├── deployment.yaml
+│   │   │   ├── service.yaml
+│   │   │   ├── ingress.yaml
+│   │   │   ├── hpa.yaml
+│   │   │   └── pdb.yaml
+│   │   └── packaging/
+│   │       ├── package.sh
+│   │       └── publish.sh
+│   ├── argocd/
+│   │   ├── project.yaml
+│   │   ├── applicationset.yaml
+│   │   └── applications/
+│   │       ├── app.dev.yaml
+│   │       ├── app.staging.yaml
+│   │       └── app.prod.yaml
+│   ├── terraform/
+│   │   ├── backend.tf
+│   │   ├── versions.tf
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   ├── environments/
+│   │   │   ├── dev.tfvars
+│   │   │   ├── staging.tfvars
+│   │   │   └── prod.tfvars
+│   │   └── modules/
+│   │       ├── stateful/
+│   │       │   ├── database.tf
+│   │       │   ├── storage.tf
+│   │       │   ├── cache.tf
+│   │       │   └── secrets.tf
+│   │       ├── stateless/
+│   │       │   ├── compute.tf
+│   │       │   ├── ingress.tf
+│   │       │   └── autoscaling.tf
+│   │       └── security/
+│   │           ├── iam.tf
+│   │           ├── security_groups.tf
+│   │           └── kms.tf
+│   ├── topology/
+│   │   └── network_map.yaml
+│   └── release/
+│       ├── deploy.sh
+│       └── rollback.sh
 │
 ├── src/
+│   ├── main.[ext]                                # ─── Application Root Bootstrap & Server Runner
+│   │
 │   ├── api/
-│   │   ├── .gitkeep
-│   │   ├── rest/v1/
-│   │   │   ├── .gitkeep
+│   │   ├── contracts/                            # Authoritative API specifications (contract-first)
+│   │   │   ├── openapi/                          # REST OpenAPI 3.1+ specifications
+│   │   │   │   ├── v1.yaml
+│   │   │   │   ├── v2.yaml
+│   │   │   │   └── changelog.md
+│   │   │   ├── graphql/                          # GraphQL Schema Definition (SDL)
+│   │   │   │   ├── v1.graphql
+│   │   │   │   └── changelog.md
+│   │   │   ├── proto/                            # gRPC Protobuf definitions (v1/...)
+│   │   │   │   └── v1/
+│   │   │   ├── asyncapi/                         # Event-driven AsyncAPI specifications
+│   │   │   │   └── v1.yaml
+│   │   │   └── json-schema/                      # Strict event payload schemas
+│   │   │       └── {event}/v1.json
+│   │   ├── rest/v1/                              # REST delivery adapters
 │   │   │   ├── router/
 │   │   │   ├── route.rules/
 │   │   │   └── handlers/
-│   │   ├── graphql/v1/
-│   │   │   ├── .gitkeep
+│   │   ├── graphql/v1/                           # GraphQL delivery adapters
 │   │   │   ├── schema/
 │   │   │   ├── resolvers/
 │   │   │   └── dataloaders/
-│   │   ├── grpc/v1/
-│   │   │   ├── .gitkeep
+│   │   ├── grpc/v1/                              # gRPC delivery adapters
 │   │   │   ├── server/
 │   │   │   └── handlers/
-│   │   └── events/
-│   │       ├── .gitkeep
+│   │   └── events/                               # Event streaming adapters
 │   │       ├── consumers/
 │   │       └── publishers/
 │   │
@@ -311,78 +322,60 @@ The complete structural reference tree for all polyglot sub-packages and 10-role
 │   │           └── {feature}.workflow.test.[ext]
 │   │
 │   ├── infra/
-│   │   ├── .gitkeep
 │   │   ├── config/
-│   │   │   ├── .gitkeep
-│   │   │   ├── config.loader.[ext]
-│   │   │   └── env.schema.[ext]
-│   │   ├── database/
-│   │   │   ├── .gitkeep
-│   │   │   ├── pool/
-│   │   │   ├── factory/
-│   │   │   ├── transaction/
-│   │   │   ├── executor/
-│   │   │   ├── middleware/
-│   │   │   ├── migrations/
-│   │   │   ├── tracing/
-│   │   │   └── adapters/
-│   │   ├── messaging/
-│   │   │   ├── .gitkeep
-│   │   │   ├── broker/
-│   │   │   ├── factory/
-│   │   │   ├── producers/
-│   │   │   ├── consumers/
-│   │   │   ├── middleware/
-│   │   │   ├── topics/
-│   │   │   ├── migrations/
-│   │   │   ├── tracing/
-│   │   │   └── cqrs/
+│   │   │   ├── config.loader.[ext]               # Strongly-typed environment & secrets loader
+│   │   │   └── env.schema.[ext]                  # Runtime schema binding
 │   │   ├── clients/
-│   │   │   ├── .gitkeep
-│   │   │   └── {upstream-service}/v1/
+│   │   │   └── {upstream-service}/v1/            # Generated client SDKs (never hand-written)
+│   │   │       └── {service}.client.[ext]
 │   │   └── observability/
-│   │       ├── .gitkeep
-│   │       ├── tracing/
-│   │       ├── clocks/
-│   │       ├── profiling/
-│   │       ├── race_detection/
-│   │       ├── deadlock/
-│   │       ├── heap_analysis/
-│   │       ├── ebpf/
-│   │       ├── wire_analysis/
-│   │       ├── vector_inspection/
-│   │       ├── divergence_audit/
-│   │       ├── idempotency_audit/
-│   │       ├── transition_log/
-│   │       ├── snapshots/
-│   │       ├── replay/
-│   │       ├── wal_miner/
-│   │       ├── shadow_traffic/
-│   │       ├── circuit_breaker_history/
-│   │       ├── saturation_analysis/
-│   │       ├── analytics/
-│   │       └── topology/
+│   │       ├── tracer.[ext]                      # OpenTelemetry tracer & span context injector
+│   │       ├── metrics.[ext]                     # Prometheus / OTLP metrics recorder
+│   │       ├── profiler.[ext]                    # Continuous CPU/memory profiler probe
+│   │       └── logger.[ext]                      # Structured JSON logger with W3C trace correlation
 │   │
 │   └── shared/
-│       ├── .gitkeep
-│       ├── utils/
 │       ├── constants/
+│       │   ├── system.constants.[ext]            # System-wide defaults, timeouts & headers
+│       │   └── error_codes.[ext]                 # Standard canonical error code enums
+│       ├── utils/
+│       │   ├── date.utils.[ext]                  # Pure ISO 8601 UTC date/time helpers
+│       │   ├── crypto.utils.[ext]                # SHA256 body hashing & UUIDv7 generator
+│       │   └── data.utils.[ext]                  # Pure list filtering, sorting & sanitization
 │       ├── errors/
+│       │   ├── application.error.[ext]           # Base ApplicationError class
+│       │   └── typed.errors.[ext]                # NotFound, Validation, Unauthorized, Conflict errors
 │       └── types/
+│           ├── envelope.types.[ext]              # ApiResponse, ApiErrorResponse, TraceContext
+│           └── pagination.types.[ext]            # PageRequest, PageResponse, CursorPagination
 │
-├── scripts/
-│   ├── run.sh
-│   ├── migrate.sh
-│   ├── test.sh
-│   └── generate.sh
+├── scripts/                                      # ─── Operational & Lifecycle Runners
+│   ├── run/                                      # Service runtime execution scripts
+│   │   ├── run.sh                                # Local development runner
+│   │   └── run.prod.sh                           # Hardened production boot script
+│   ├── migrate/                                  # Database migration and rollback runners
+│   │   ├── migrate.sh                            # Applies pending DDL migrations
+│   │   └── rollback.sh                           # Reverts last migration batch
+│   ├── test/                                     # Automated test runners
+│   │   ├── test.unit.sh                          # Runs unit test suites
+│   │   ├── test.integration.sh                   # Runs testcontainers integration suites
+│   │   └── test.e2e.sh                           # End-to-end regression runner
+│   └── generate/                                 # Contract & SDK codegen scripts
+│       ├── generate.contracts.sh                 # Compiles Protobuf & OpenAPI specs
+│       └── generate.clients.sh                   # Generates upstream client SDKs
 │
-├── Dockerfile
-├── Dockerfile.dev
-├── docker-compose.yml
-├── .dockerignore
-├── .env.example
-├── .package-meta.yaml
-└── .port-registry
+├── .gitignore                                    # Git ignore patterns (build artifacts, venvs, node_modules)
+├── .dockerignore                                 # Container build ignore rules
+├── .helmignore                                   # Helm packaging ignore rules
+├── .env.example                                  # Sanitized example environment configuration
+├── .package-meta.yaml                            # Unified package metadata & semver manifest
+├── .port-registry                                # Dedicated local port allocation
+│
+├── pyproject.toml                                # (Python) Poetry/PDM build system & dependencies
+├── package.json                                  # (Node.js/TypeScript) npm/pnpm package manifest
+├── Cargo.toml                                    # (Rust) Cargo package manifest
+├── go.mod                                        # (Go) Module definition & dependencies
+└── pom.xml                                       # (Java) Maven project descriptor
 ```
 
 #### 2. The 10-Role Feature Directory Tree

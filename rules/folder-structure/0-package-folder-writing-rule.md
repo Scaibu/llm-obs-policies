@@ -49,73 +49,52 @@ Never invoke, expose, or rely on HTTP/REST APIs for creating directories, scaffo
 
 When creating or refactoring any sub-package or service, create directories and files in this exact sequential order:
 
-1. contracts/
-Authoritative contract specifications (contracts/openapi/, contracts/graphql/, contracts/proto/, contracts/asyncapi/, contracts/json-schema/). Merged in a dedicated contract step before any implementation source code is written.
-
-2. config/
-Environment variable validation schema (config/env.schema) and runtime environment manifests (config/default.yaml, config/development.yaml, config/production.yaml, config/test.yaml, config/feature-flags.yaml).
-
-3. database/
-Declarative database persistence specifications:
-- database/migrations/ (NNNN_description.sql and NNNN_description.rollback.sql)
-- database/rls/ (Row Level Security tenant isolation policies)
-- database/indexes/ (Performance and foreign key index specs)
-- database/partitioning/ (Range, hash, and directory partitioning specs)
-- database/storage_engine/ (LSM, tiered, hot/cold archiving, polyglot specs)
-- database/replication/ (Topology specs and chain replication)
-- database/consensus/ (Raft consensus and WAL shipping specs)
-- database/quorums/ (Quorum rules and ACK policies)
-- database/cdc/ (Change Data Capture publisher and sink specs)
-- database/sharding/ (Shard hash ring maps)
-- database/crdts/ (CRDT definitions and hybrid logical clock specs)
-- database/anti_entropy/ (Merkle tree sync and repair jobs)
-- database/fencing/ (Epoch fencing failover scripts)
-- database/retention/ (Compliance retention and soft-delete purge jobs)
-- database/seeds/ (Development and test seed fixtures)
+1. database/
+Consolidated declarative database migrations, seeds, runtime engine, and topology configuration:
 - database/schema.lock (Cryptographic checksum lockfile of applied migrations)
+- database/migrations/sql/ (.gitkeep - SQL schema migrations & rollbacks)
+- database/migrations/cypher/ (.gitkeep - Cypher graph migrations)
+- database/seeds/ (dev_seeds.sql, test_seeds.sql - development and integration fixtures)
+- database/engine/ (connection.py, transaction.py, executor.py, runner.py - database runtime engine)
+- database/config/ (rls.sql - Row Level Security policies, topology.yaml - replication & quorums)
 
-4. messaging/
-Declarative streaming and event management specifications:
-- messaging/topics/ (Topic provisioning JSON specs and rollback pairs)
-- messaging/schema-registry/ (Avro, Protobuf, or JSON Schema event contracts)
-- messaging/dlq/ (Dead Letter Queue retry policies)
-- messaging/subscriptions/ (Consumer group declarations and topic mappings)
+2. messaging/
+Declarative streaming, topic management, schemas, policies, and messaging runtime engine:
 - messaging/topics.lock (Cryptographic checksum lockfile of provisioned topics)
+- messaging/topics/ (Declarative topic provisioning manifests - topics.yaml)
+- messaging/schemas/ (Event schema registry contracts - Avro, Protobuf, JSON Schema)
+- messaging/policies/ (Dead Letter Queue & retry policies - dlq_policy.yaml)
+- messaging/engine/ (Centralized runtime engine: client/, producers/, consumers/, pipeline/)
 
-5. deploy/
-Infrastructure deployment specifications:
-- deploy/k8s/ (Kubernetes manifests: Deployment, Service, HPA, ConfigMap)
-- deploy/helm/ (Helm packaging chart and values manifests)
+3. deploy/
+Multi-target polyglot infrastructure deployment and release specifications:
+- deploy/docker/ (base/Dockerfile.base, base/registry.yaml, service/Dockerfile, service/Dockerfile.dev, compose/docker-compose.single.yml, compose/docker-compose.polyglot.yml, compose/docker-compose.infra.yml)
+- deploy/k8s/ (base/deployment.yaml, service.yaml, hpa.yaml, configmap.yaml, ingress.yaml, pdb.yaml, overlays/local-polyglot, dev, staging, prod)
+- deploy/helm/ (Chart.yaml, Chart.lock, values.yaml, env-values/values.{dev,staging,prod}.yaml, templates/_helpers.tpl, templates/deployment.yaml, service.yaml, ingress.yaml, hpa.yaml, pdb.yaml, packaging/package.sh, packaging/publish.sh)
+- deploy/argocd/ (project.yaml, applicationset.yaml, applications/app.{dev,staging,prod}.yaml)
+- deploy/terraform/ (backend.tf, versions.tf, main.tf, variables.tf, outputs.tf, environments/{dev,staging,prod}.tfvars, modules/stateful/{database,storage,cache,secrets}.tf, modules/stateless/{compute,ingress,autoscaling}.tf, modules/security/{iam,security_groups,kms}.tf)
+- deploy/topology/ (network_map.yaml - declares hostnames, ports & protocols for sibling services)
+- deploy/release/ (deploy.sh, rollback.sh)
 
-6. src/shared/
-Package-internal repeating utilities with zero business logic and zero IO:
-- src/shared/utils/ (Pure date, string, crypto formatting helpers)
-- src/shared/constants/ (System constants and HTTP header constants)
-- src/shared/errors/ (Standard ApplicationError classes and envelope wrappers)
-- src/shared/types/ (Pagination, result envelopes, common utility types)
+4. src/
+Application core source code:
+- src/main.[ext] (Root application bootstrap, DI wiring, and server runner)
+- src/api/ (Delivery ingress and contract specifications: contracts/, rest/v1/, graphql/v1/, grpc/v1/, events/)
+- src/features/{feature-name}/ (Hexagonal domain feature modules: contracts/, domain/, infrastructure/, service/, tests/)
+- src/infra/ (Centralized infrastructure adapters: config/, clients/, observability/)
+- src/shared/ (Pure reusable utilities with zero IO and zero business logic: constants/, utils/, errors/, types/)
 
-7. src/infra/
-Centralized infrastructure runtime engines (excluding database, which is centralized in database/engine/):
-- src/infra/config/ (Strongly-typed configuration loader and secrets resolver)
-- src/infra/messaging/ (Kafka broker client, factories, typed event producers, consumers, middleware, CQRS dispatcher)
-- src/infra/clients/ (Generated upstream service client SDKs - never hand-written)
-- src/infra/observability/ (OpenTelemetry tracer, logical clocks, profiler, race detector, deadlock engine, heap differ, eBPF probes, transition logger, failure diagnosticians)
+5. scripts/
+Operational and lifecycle runner automation:
+- scripts/run/ (run.sh, run.prod.sh)
+- scripts/migrate/ (migrate.sh, rollback.sh)
+- scripts/test/ (test.unit.sh, test.integration.sh, test.e2e.sh)
+- scripts/generate/ (generate.contracts.sh, generate.clients.sh)
 
-8. src/features/{feature-name}/
-Isolated business domain feature modules scaffolding all 10 mandatory roles according to feature-folder-structure.md (context.yml, index, schema/, queries/, rules/, machines/, workflows/, repository/, service/, types/).
-
-9. src/api/
-Delivery ingress adapters mapping external protocols to domain services:
-- src/api/rest/v1/ (REST handlers, routers, and route rules)
-- src/api/graphql/v1/ (GraphQL schemas, resolvers, dataloaders)
-- src/api/grpc/v1/ (gRPC server stubs and handlers)
-- src/api/events/ (Event consumers and event publishers)
-
-10. Root Package Manifests and Scripts
-- scripts/ (run.sh, migrate.sh, test.sh, generate.sh)
-- Dockerfile and Dockerfile.dev (Multi-stage container builds)
-- docker-compose.yml (Isolated test and runtime infrastructure)
+6. Root Package Manifests and Ignore Files
+- .gitignore, .dockerignore, .helmignore
 - .env.example, .package-meta.yaml, .port-registry
+- pyproject.toml / package.json / Cargo.toml / go.mod
 
 ---
 
