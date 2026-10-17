@@ -280,11 +280,36 @@ ApiPort<T>                HTTP/transport facade returning Result<T, Error>
 
 ---
 
-# PART V: DIRECT FEATURE CREATION PROTOCOL
+# PART V: DIRECT FEATURE & PACKAGE CREATION PROTOCOL
 
-Feature directories and canonical files are created directly via filesystem operations according to the strict canonical role hierarchy. No external or non-existent CLI scaffolding commands are required.
+Feature directories and canonical files can be created directly via filesystem operations or automatically using the **Policy Orchestrator CLI** (`folder_scaffold_cli.py`).
 
-### 1. Backend Feature Directory & File Layout
+### 1. Automated Scaffolding Commands
+
+You can execute scaffolding directly using the Python CLI from [`policy-orchestrator`](file:///home/btpl-lap-22/live/llm-obs-python-packages/policies/policy-orchestrator):
+
+#### A. Scaffold a Feature (Rule 1)
+```bash
+python3 src/api/cli/folder_scaffold_cli.py scaffold-feature \
+  --name <feature_name> \
+  --package <package_name> \
+  --type backend \
+  --base-dir <optional_target_directory>
+```
+* **Creates:** Full grouped layout: `service/`, `contracts/` (`types`, `schema`), `domain/` (`rules`, `machines`, `workflows`), `infrastructure/` (`ports`, `adapters`, `queries`), and `tests/`.
+* **Syncs:** Knowledge graph nodes and dependency relationships in Neo4j/AlloyDB.
+
+#### B. Scaffold a Complete Polyglot Package (Rule 0)
+```bash
+python3 src/api/cli/folder_scaffold_cli.py scaffold-package \
+  --name <package_name> \
+  --base-dir <target_directory>
+```
+* **Creates:** Complete 10-subsystem package root (`contracts/`, `config/`, `database/`, `messaging/`, `deploy/`, `src/shared/`, `src/infra/`, `src/api/`, `src/features/`, `scripts/`).
+
+---
+
+### 2. Backend Feature Directory & File Layout
 Directly create the canonical files in their respective paths:
 ```
 src/
