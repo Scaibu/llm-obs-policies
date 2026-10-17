@@ -55,18 +55,18 @@ The **Step #** indicates the logical request and execution flow sequence.
 |:------:|------|------|:----:|-------------------|
 | **01** | router | `src/api/rest/v1/routers/{f}.router` | C | Ingress routing: mounts endpoints, extracts W3C `traceparent`, routes incoming async request |
 | **02** | handler | `src/api/rest/v1/handlers/{f}.handler` | C | Ingress delivery: parses request, executes root try/catch, manages root span, serializes response envelope |
-| **03** | schema | `schema/{f}.schema` | C | Validation + Anti-Corruption Layer (ACL): bidirectional mapping (`fromApi` on input, `toApi` on output) |
-| **04** | types | `types/{f}.types` | C | Pure domain models, input/output DTOs, domain error types |
+| **03** | schema | `contracts/{f}.schema` | C | Validation + Anti-Corruption Layer (ACL): bidirectional mapping (`fromApi` on input, `toApi` on output) |
+| **04** | types | `contracts/{f}.types` | C | Pure domain models, input/output DTOs, domain error types |
 | **05** | context | `context.yml` | C | Invariants, domain boundaries, required hexagonal ports |
 | **06** | service | `service/{f}.service` | C | Domain orchestrator: coordinates rules, machine, workflows, transactions (`UnitOfWork`), and awaits outbound ports |
-| **07** | rules | `rules/{f}.rules` | X | Business logic decision tables evaluated as structured data (priority, deny-override) |
-| **08** | machine | `machines/{f}.machine` | X | Deterministic state machine DAG for entity lifecycles (>= 3 states) |
-| **09** | workflow | `workflows/{f}.workflow` | X | Multi-step automation DAG steps traced under root span |
-| **10** | ports | `repository/{f}.repository.port` (and outbound ports) | C | **Universal Hexagonal Outbound Ports Interface:** Abstract contracts decoupling domain service from **ANY** external subsystem (Database, 3rd-Party APIs, Kafka/Messaging, Redis/Cache, Cloud Storage, Network Sockets, GPU/OS Drivers) |
-| **11** | adapters | `repository/{f}.repository` (and outbound adapters) | C | **Resilient Outbound Adapters:** Concrete adapters implementing ports, wrapped in decorator pipelines (`withTracing`, `withCircuitBreaker`, `withRetry`, `withCache`) that map raw external I/O responses back into domain entities |
-| **12** | queries | `queries/{f}.queries` | C | Named parameterized `FLOW_{VERB}_{ENTITY}_{CRITERIA}` SQL queries (when persistence port is active) |
+| **07** | rules | `domain/rules/{f}.rules` | X | Business logic decision tables evaluated as structured data (priority, deny-override) |
+| **08** | machine | `domain/machines/{f}.machine` | X | Deterministic state machine DAG for entity lifecycles (>= 3 states) |
+| **09** | workflow | `domain/workflows/{f}.workflow` | X | Multi-step automation DAG steps traced under root span |
+| **10** | ports | `infrastructure/ports/{f}.repository.port` (and outbound ports) | C | **Universal Hexagonal Outbound Ports Interface:** Abstract contracts decoupling domain service from **ANY** external subsystem (Database, 3rd-Party APIs, Kafka/Messaging, Redis/Cache, Cloud Storage, Network Sockets, GPU/OS Drivers) |
+| **11** | adapters | `infrastructure/adapters/{f}.repository.adapter` (and outbound adapters) | C | **Resilient Outbound Adapters:** Concrete adapters implementing ports, wrapped in decorator pipelines (`withTracing`, `withCircuitBreaker`, `withRetry`, `withCache`) that map raw external I/O responses back into domain entities |
+| **12** | queries | `infrastructure/queries/{f}.queries` | C | Named parameterized `FLOW_{VERB}_{ENTITY}_{CRITERIA}` SQL queries (when persistence port is active) |
 | **13** | index | `index` | C | Public facade: exports domain service and public types only; shields internal adapters |
-| **14** | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test` | X | Exhaustive unit tests for business rules, state machines, and domain workflows |
+| **14** | tests | `tests/{f}.rules.test`, `tests/{f}.machine.test`, `tests/{f}.workflow.test` | X | Exhaustive unit tests for business rules, state machines, and domain workflows |
 
 Agent scratch notes go in a git-ignored `.agent-notes.md`, never in `context.yml`.
 
@@ -292,21 +292,28 @@ src/
 │   ├── routers/{f}.router.[ext]              # (01) Ingress routing & W3C traceparent extraction
 │   └── handlers/{f}.handler.[ext]             # (02) Ingress delivery, root try/catch, RFC envelope
 └── features/{f}/
-    ├── schema/{f}.schema.[ext]                # (03) ACL validation, fromApi / toApi
-    ├── types/{f}.types.[ext]                  # (04) Domain DTOs and entity models
     ├── context.yml                            # (05) Boundary invariants & port declarations
-    ├── service/{f}.service.[ext]              # (06) Pure orchestrator, child span, UoW
-    ├── rules/{f}.rules.[ext]                  # (07) [Tier X] Decision tables as data
-    ├── machines/{f}.machine.[ext]             # (08) [Tier X] Lifecycle state machine
-    ├── workflows/{f}.workflow.[ext]           # (09) [Tier X] Multi-step DAG runner
-    ├── repository/
-    │   ├── {f}.repository.port.[ext]          # (10) Abstract outbound port contract
-    │   └── {f}.repository.[ext]               # (11) Decorated adapter (withTracing, withRetry)
-    ├── queries/{f}.queries.[ext]              # (12) Parameterized FLOW_* SQL queries
     ├── index.[ext]                            # (13) Public facade (service & public types)
+    ├── service/
+    │   └── {f}.service.[ext]                  # (06) Pure orchestrator, child span, UoW
+    ├── contracts/
+    │   ├── {f}.types.[ext]                    # (04) Domain DTOs and entity models
+    │   └── {f}.schema.[ext]                   # (03) ACL validation, fromApi / toApi
+    ├── domain/
+    │   ├── rules/{f}.rules.[ext]              # (07) [Tier X] Decision tables as data
+    │   ├── machines/{f}.machine.[ext]         # (08) [Tier X] Lifecycle state machine
+    │   └── workflows/{f}.workflow.[ext]       # (09) [Tier X] Multi-step DAG runner
+    ├── infrastructure/
+    │   ├── ports/
+    │   │   └── {f}.repository.port.[ext]      # (10) Abstract outbound port contract
+    │   ├── adapters/
+    │   │   └── {f}.repository.adapter.[ext]   # (11) Decorated adapter (withTracing, withRetry)
+    │   └── queries/
+    │       └── {f}.queries.[ext]              # (12) Parameterized FLOW_* SQL queries
     └── tests/
         ├── {f}.rules.test.[ext]               # (14) [Tier X] Business rules unit tests
-        └── {f}.machine.test.[ext]             # (14) [Tier X] State machine transition tests
+        ├── {f}.machine.test.[ext]             # (14) [Tier X] State machine transition tests
+        └── {f}.workflow.test.[ext]            # (14) [Tier X] Workflow tests
 ```
 
 ### 2. Frontend Feature Creation (State-Controller-Model Triad)

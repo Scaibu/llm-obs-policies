@@ -285,24 +285,30 @@ The complete structural reference tree for all polyglot sub-packages and 10-role
 │   │   └── {feature-name}/
 │   │       ├── context.yml
 │   │       ├── index.[ext]
-│   │       ├── schema/
-│   │       │   └── {feature}.schema.[ext]
-│   │       ├── queries/
-│   │       │   ├── .gitkeep
-│   │       │   └── {feature}.queries.[ext|sql]
-│   │       ├── rules/
-│   │       │   └── {feature}.rules.[ext]
-│   │       ├── machines/
-│   │       │   └── {feature}.machine.[ext]
-│   │       ├── workflows/
-│   │       │   └── {feature}.workflow.[ext]
-│   │       ├── repository/
-│   │       │   ├── {feature}.repository.port.[ext]
-│   │       │   └── {feature}.repository.[ext]
 │   │       ├── service/
 │   │       │   └── {feature}.service.[ext]
-│   │       └── types/
-│   │           └── {feature}.types.[ext]
+│   │       ├── contracts/
+│   │       │   ├── {feature}.types.[ext]
+│   │       │   └── {feature}.schema.[ext]
+│   │       ├── domain/
+│   │       │   ├── rules/
+│   │       │   │   └── {feature}.rules.[ext]
+│   │       │   ├── machines/
+│   │       │   │   └── {feature}.machine.[ext]
+│   │       │   └── workflows/
+│   │       │       └── {feature}.workflow.[ext]
+│   │       ├── infrastructure/
+│   │       │   ├── ports/
+│   │       │   │   └── {feature}.repository.port.[ext]
+│   │       │   ├── adapters/
+│   │       │   │   └── {feature}.repository.adapter.[ext]
+│   │       │   └── queries/
+│   │       │       ├── .gitkeep
+│   │       │       └── {feature}.queries.[ext|sql]
+│   │       └── tests/
+│   │           ├── {feature}.rules.test.[ext]
+│   │           ├── {feature}.machine.test.[ext]
+│   │           └── {feature}.workflow.test.[ext]
 │   │
 │   ├── infra/
 │   │   ├── .gitkeep
@@ -384,23 +390,29 @@ The complete structural reference tree for all polyglot sub-packages and 10-role
 src/features/{feature-name}/
 ├── context.yml
 ├── index.[ext]
-├── schema/
-│   └── {feature}.schema.[ext]
-├── queries/
-│   └── {feature}.queries.[ext|sql]
-├── rules/
-│   └── {feature}.rules.[ext]
-├── machines/
-│   └── {feature}.machine.[ext]
-├── workflows/
-│   └── {feature}.workflow.[ext]
-├── repository/
-│   ├── {feature}.repository.port.[ext]
-│   └── {feature}.repository.[ext]
 ├── service/
 │   └── {feature}.service.[ext]
-└── types/
-    └── {feature}.types.[ext]
+├── contracts/
+│   ├── {feature}.types.[ext]
+│   └── {feature}.schema.[ext]
+├── domain/
+│   ├── rules/
+│   │   └── {feature}.rules.[ext]
+│   ├── machines/
+│   │   └── {feature}.machine.[ext]
+│   └── workflows/
+│       └── {feature}.workflow.[ext]
+├── infrastructure/
+│   ├── ports/
+│   │   └── {feature}.repository.port.[ext]
+│   ├── adapters/
+│   │   └── {feature}.repository.adapter.[ext]
+│   └── queries/
+│       └── {feature}.queries.[ext|sql]
+└── tests/
+    ├── {feature}.rules.test.[ext]
+    ├── {feature}.machine.test.[ext]
+    └── {feature}.workflow.test.[ext]
 ```
 *(Note: Package and feature structures are automatically generated via `policy-orchestrator scaffold-package` and `policy-orchestrator scaffold-feature`)*
 
@@ -429,7 +441,7 @@ src/features/{feature-name}/
 
 #### Database & Infrastructure Coordination Pipeline
 
-The coordination between declarative specifications (`database/`), executable infrastructure runtime (`src/infra/database/`), domain query definitions (`src/features/{feature}/queries/`), and domain services (`src/features/{feature}/service/`) operates across four distinct execution phases:
+The coordination between declarative specifications (`database/`), executable infrastructure runtime (`src/infra/database/`), domain query definitions (`src/features/{feature}/infrastructure/queries/`), and domain services (`src/features/{feature}/service/`) operates across four distinct execution phases:
 
 
 1. **Phase 1 — Schema Migration & Verification (CI/CD & Startup)**:
@@ -444,8 +456,8 @@ The coordination between declarative specifications (`database/`), executable in
 
 3. **Phase 3 — Flow-by-Flow Query Dispatch (Runtime Execution)**:
    * Client HTTP request hits router -> Feature Service (`src/features/{feature}/service/`) executes business flow.
-   * Service invokes Repository (`src/features/{feature}/repository/`), which selects named parameterized query string from `src/features/{feature}/queries/{feature}.queries.sql`.
-   * Repository delegates query execution to `src/infra/database/executor/`.
+   * Service invokes Repository Port (`src/features/{feature}/infrastructure/ports/`), implemented by adapter (`src/features/{feature}/infrastructure/adapters/`), which selects named parameterized query string from `src/features/{feature}/infrastructure/queries/{feature}.queries.sql`.
+   * Adapter delegates query execution to `src/infra/database/executor/`.
 
 4. **Phase 4 — Pipeline Decoration & Driver Execution (Infra Engine)**:
    * `src/infra/database/executor/` passes query through middleware (`src/infra/database/middleware/`):

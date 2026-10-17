@@ -323,16 +323,16 @@ Every feature directory implements the **5 Immutable Data Pillars** plus clean p
 | Sub-Folder / File | File Naming Pattern | Class / Symbol Name | Primary Responsibility |
 |---|---|---|---|
 | `index.ts` | `index.ts` | Public exports only | Facade export: domain service and public types. Never exports internal repository or SQL queries. |
-| `context.md` | `context.md` | Markdown text | Business domain context, dependencies, ADR links. |
-| `schema/` | `{feature}.schema.ts` | `{Feature}EntitySchema` | Zod runtime schema + declarative `fromApi`/`toApi` JSON transformation mapping operations. |
-| `queries/` | `{feature}.queries.sql` | `FLOW_{ACTION}` | MANDATORY: Named, flow-grouped parameterized queries. Zero inline SQL strings anywhere else. |
-| `rules/` | `{feature}.rules.ts` | `{Feature}RuleSet` | Business logic branches as structured rules with priority, category, and deny-override resolution. |
-| `machines/` | `{feature}.machine.ts` | `{Feature}LifecycleMachine` | Multi-state lifecycle definition with state transitions, guards, and event side-effects. |
-| `workflows/` | `{feature}.workflow.ts` | `{Feature}AutomationWorkflow`| Multi-step DAG automation step array executed by the traced workflow runner. |
+| `context.yml` | `context.yml` | YAML text | Business domain context, dependencies, ADR links, boundary invariants. |
 | `service/` | `{feature}.service.ts` | `{Feature}DomainService` | Pure domain service logic. Injects repository port interface. Zero direct HTTP/DB/ORM driver imports. |
-| `repository/` | `{feature}.repository.port.ts` | `{Feature}RepositoryPort` | Interface declaring data access contracts (`getById`, `create`, `update`, `delete`). |
-| `repository/` | `{feature}.repository.ts` | `Postgres{Feature}Repository`| Concrete repository implementation invoking `SqlQueryExecutor` from `src/infra/database/executor/`. |
-| `types/` | `{feature}.types.ts` | `{Feature}DomainModel` | Domain models, input commands, output results, and custom domain error classes. |
+| `contracts/` | `{feature}.types.ts` | `{Feature}DomainModel` | Domain models, input commands, output results, and custom domain error classes. |
+| `contracts/` | `{feature}.schema.ts` | `{Feature}EntitySchema` | Zod runtime schema + declarative `fromApi`/`toApi` JSON transformation mapping operations. |
+| `domain/rules/` | `{feature}.rules.ts` | `{Feature}RuleSet` | Business logic branches as structured rules with priority, category, and deny-override resolution. |
+| `domain/machines/` | `{feature}.machine.ts` | `{Feature}LifecycleMachine` | Multi-state lifecycle definition with state transitions, guards, and event side-effects. |
+| `domain/workflows/` | `{feature}.workflow.ts` | `{Feature}AutomationWorkflow`| Multi-step DAG automation step array executed by the traced workflow runner. |
+| `infrastructure/ports/` | `{feature}.repository.port.ts` | `{Feature}RepositoryPort` | Interface declaring data access contracts (`getById`, `create`, `update`, `delete`). |
+| `infrastructure/adapters/`| `{feature}.repository.adapter.ts` | `Postgres{Feature}Repository`| Concrete repository implementation invoking `SqlQueryExecutor` from `src/infra/database/executor/`. |
+| `infrastructure/queries/` | `{feature}.queries.sql` | `FLOW_{ACTION}` | MANDATORY: Named, flow-grouped parameterized queries. Zero inline SQL strings anywhere else. |
 | `tests/unit/` | `{feature}.service.spec.ts` | `describe("{Feature}Service")`| Unit tests mocking the repository port. Zero network/DB calls. |
 | `tests/integration/`| `{feature}.repository.test.ts`| `describe("{Feature}Repo")` | Integration tests executing queries against real testcontainer database. |
 | `tests/contract/`| `{feature}.contract.test.ts` | `describe("{Feature}Contract")`| Compliance test asserting responses against OpenAPI specification. |
