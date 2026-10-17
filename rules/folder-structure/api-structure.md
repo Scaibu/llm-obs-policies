@@ -433,39 +433,64 @@ src/features/{feature-name}/
 
 ---
 
-### Centralized Database Architecture Guidelines
+### Consolidated Database Architecture Guidelines (`database/`)
 
-1. **Package Database Specification (`database/`)**: Declarative database schemas, SQL DDL migrations (`migrations/`), RLS policies (`rls/`), optimization indexes (`indexes/`), data partitioning rules (`partitioning/`), storage engine settings (`storage_engine/`), replication topologies (`replication/`), consensus specifications (`consensus/`), quorums (`quorums/`), CDC specs (`cdc/`), sharding ring maps (`sharding/`), CRDT definitions (`crdts/`), anti-entropy jobs (`anti_entropy/`), fencing scripts (`fencing/`), backup retention policies (`retention/`), and seed fixtures (`seeds/`) are strictly owned by `database/` at the sub-package root level.
-2. **Centralized Database Infra (`src/infra/database/`)**: Connection pooling, read/write splitting (`pool/`), connection factories (`factory/`), transaction runner (`transaction/`), parameterized query executors (`executor/`), DB middleware pipelines (`middleware/`), DDL schema migration runner (`migrations/`), and vendor driver adapters (`adapters/`) are strictly maintained in `src/infra/database/`. Never open raw DB connections or construct ad-hoc SQL driver instances inside domain features or HTTP handlers.
-3. **Database Schema Locking & Migration Integrity (`database/schema.lock`)**: Applied migrations update `database/schema.lock`. Migration runners in `src/infra/database/migrations/` verify checksums against `schema.lock` before executing DDL migrations.
+All database specifications, schema migrations, seed fixtures, and executable database engines are strictly centralized under **`database/`** at the sub-package root:
+
+```text
+database/
+├── schema.lock                           # SHA256 cryptographic integrity hash of applied migrations
+│
+├── migrations/                           # Declarative DDL migrations & rollback scripts
+│   ├── sql/                              # Relational DDL (0001_initial.sql, 0001_initial.rollback.sql)
+│   └── cypher/                           # Graph DDL (Neo4j constraints & indexes)
+│
+├── seeds/                                # Initial environment seed data fixtures
+│   ├── dev_seeds.sql
+│   └── test_seeds.sql
+│
+├── engine/                               # Executable Database Runtime Engine
+│   ├── connection.[ext]                  # Connection pool & client lifecycle (Primary / Replica)
+│   ├── transaction.[ext]                 # Unit of Work / transaction runner (commit & rollback)
+│   ├── executor.[ext]                    # Parameterized query executor with OpenTelemetry tracing
+│   └── runner.[ext]                      # Migration runner verifying checksums against schema.lock
+│
+└── config/                               # (Optional) Topology, RLS, & replication policies
+    ├── rls.sql                           # Row-level security policies (multi-tenancy)
+    └── topology.yaml                     # Read/write replication & quorum settings
+```
+
+1. **All-in-One Database Hub (`database/`)**: Declarative database schemas, SQL/Cypher DDL migrations (`migrations/`), seed fixtures (`seeds/`), and executable engine code (`engine/`) are consolidated in `database/`. Never open ad-hoc SQL driver instances or scattered connections inside domain features or HTTP handlers.
+2. **Executable Engine Integration (`database/engine/`)**:
+   - `connection`: Manages primary write and read replica connection pools with tracing instrumentation.
+   - `transaction`: Manages atomic `UnitOfWork` boundaries ensuring safe commits or rollbacks.
+   - `executor`: Executes parameterized queries (`FLOW_*`) defined in feature modules (`src/features/{feature}/infrastructure/queries/`).
+   - `runner`: Verifies SHA256 checksums against `database/schema.lock` before executing DDL migrations.
 
 #### Database & Infrastructure Coordination Pipeline
 
-The coordination between declarative specifications (`database/`), executable infrastructure runtime (`src/infra/database/`), domain query definitions (`src/features/{feature}/infrastructure/queries/`), and domain services (`src/features/{feature}/service/`) operates across four distinct execution phases:
-
+The coordination between declarative specifications (`database/migrations/`), executable engine (`database/engine/`), domain query definitions (`src/features/{feature}/infrastructure/queries/`), and domain services (`src/features/{feature}/service/`) operates across four distinct execution phases:
 
 1. **Phase 1 — Schema Migration & Verification (CI/CD & Startup)**:
-   * `src/infra/database/migrations/` reads versioned DDL scripts from `database/migrations/` (e.g. `0001_initial_schema.sql`).
+   * `database/engine/runner` reads versioned DDL scripts from `database/migrations/` (e.g. `0001_initial_schema.sql`).
    * Verifies SHA256 checksums against `database/schema.lock` to ensure zero out-of-order or altered migration tampering.
    * Acquires a DDL lock and executes the migration against the target database cluster.
 
 2. **Phase 2 — Connection Bootstrapping & Pool Management (Service Startup)**:
    * Strongly-typed config loader (`src/infra/config/`) resolves environment secrets (`DATABASE_URL`).
-   * `src/infra/database/pool/` parses topology specs (`database/replication/topology_spec.yaml`) and read/write quorum rules (`database/quorums/quorum_config.yaml`).
-   * Initializes Primary Write Pools and Read Replica Pools with OpenTelemetry tracing hooks attached (`src/infra/database/tracing/`).
+   * `database/engine/connection` initializes Primary Write Pools and Read Replica Pools with OpenTelemetry tracing hooks attached.
 
 3. **Phase 3 — Flow-by-Flow Query Dispatch (Runtime Execution)**:
    * Client HTTP request hits router -> Feature Service (`src/features/{feature}/service/`) executes business flow.
    * Service invokes Repository Port (`src/features/{feature}/infrastructure/ports/`), implemented by adapter (`src/features/{feature}/infrastructure/adapters/`), which selects named parameterized query string from `src/features/{feature}/infrastructure/queries/{feature}.queries.sql`.
-   * Adapter delegates query execution to `src/infra/database/executor/`.
+   * Adapter delegates query execution to `database/engine/executor`.
 
-4. **Phase 4 — Pipeline Decoration & Driver Execution (Infra Engine)**:
-   * `src/infra/database/executor/` passes query through middleware (`src/infra/database/middleware/`):
-     - Starts OpenTelemetry trace span & sanitizes SQL.
+4. **Phase 4 — Execution & Telemetry (Database Engine)**:
+   * `database/engine/executor` executes the query:
+     - Starts OpenTelemetry trace span & sanitizes query parameters.
      - Applies resilience wrappers (`withRetry`, `withCircuitBreaker`, `withCache`).
      - Evaluates read replica version pins (`replica.applied_version >= client_last_write_version`) to choose Read Replica vs. Primary Node.
-   * Vendor driver adapter (`src/infra/database/adapters/`) sends binary query protocol to database engine.
-   * Results are returned -> mapped via `schema/fromApi` -> delivered back to domain service.
+   * Database engine returns rows -> mapped via `contracts/{feature}.schema` (`fromApi`) -> delivered back to domain service.
 
 ---
 

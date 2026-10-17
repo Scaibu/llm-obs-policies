@@ -95,9 +95,8 @@ Package-internal repeating utilities with zero business logic and zero IO:
 - src/shared/types/ (Pagination, result envelopes, common utility types)
 
 7. src/infra/
-Centralized infrastructure runtime engines:
+Centralized infrastructure runtime engines (excluding database, which is centralized in database/engine/):
 - src/infra/config/ (Strongly-typed configuration loader and secrets resolver)
-- src/infra/database/ (Connection pools, factories, transaction manager, query executor, middleware, driver adapters)
 - src/infra/messaging/ (Kafka broker client, factories, typed event producers, consumers, middleware, CQRS dispatcher)
 - src/infra/clients/ (Generated upstream service client SDKs - never hand-written)
 - src/infra/observability/ (OpenTelemetry tracer, logical clocks, profiler, race detector, deadlock engine, heap differ, eBPF probes, transition logger, failure diagnosticians)
