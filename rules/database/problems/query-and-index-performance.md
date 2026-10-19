@@ -7,7 +7,7 @@
 
 ## 6A. Validating performance
 
-#### 6.1 "If it's fast in dev and staging, it's fast" (was #21) [Certain]
+#### 6.1 "If it's fast in dev and staging, it's fast" (was #21) 
 - **Why wrong:** Performance depends on volume, value distribution, concurrency, cache state, and plan choice, and dev reproduces none of them.
 - **What is correct:** Performance is a property of the query together with the data shape, the load, and the chosen plan.
 - **Problem it creates:** Surprises at production thresholds: plan flips, cache misses, lock contention.
@@ -15,7 +15,7 @@
 - **Meta:** At what row counts do plans change? Which parameter values are worst case?
 - **Second-order:** What does production-shaped data cost, and what are its privacy risks? Do hardware differences between test and production distort results?
 
-#### 6.2 "Premature optimization is the root of all evil, so ignore performance early" (was #23) [Likely]
+#### 6.2 "Premature optimization is the root of all evil, so ignore performance early" (was #23) 
 - **Why wrong:** The quote is about micro-optimizations. Structural choices (grain, keys, access paths, partitioning) are performance decisions and are expensive to change.
 - **What is correct:** Defer micro-tuning, and decide structure with the top access patterns in view.
 - **Problem it creates:** An architecture that can't serve its main queries without a rewrite.
@@ -25,7 +25,7 @@
 
 ## 6B. Planner behavior
 
-#### 6.3 "The query planner is smart, so trust it" (was #22) [Likely]
+#### 6.3 "The query planner is smart, so trust it" (was #22) 
 - **Why wrong:** Planner decisions rest on statistics and cost-model assumptions that fail on correlation, skew, and stale stats, and plans can flip.
 - **What is correct:** The planner is a heuristic estimator whose output you must monitor.
 - **Problem it creates:** A query regresses overnight with no code change.
@@ -33,7 +33,7 @@
 - **Meta:** Which critical queries sit near a plan boundary? Which estimates are off by 10x?
 - **Second-order:** Pinned plans go stale as data changes, and hints reduce portability. Who owns revisiting them?
 
-#### 6.4 "Statistics maintain themselves" (was #45) [Likely]
+#### 6.4 "Statistics maintain themselves" (was #45) 
 - **Why wrong:** Auto-stats trigger on a percentage of changed rows, so huge tables rarely refresh. Bulk loads arrive without stats, and single-column stats miss correlation.
 - **What is correct:** Stats are a monitored input to the planner.
 - **Problem it creates:** Bad row estimates lead to wrong join orders and scan types.
@@ -41,7 +41,7 @@
 - **Meta:** When was each hot table last analyzed? Which columns are skewed or correlated?
 - **Second-order:** More frequent analyze adds load, and larger stats targets increase planning time.
 
-#### 6.5 "Prepared statements always get the best plan" (was #46) [Certain]
+#### 6.5 "Prepared statements always get the best plan" (was #46) 
 - **Why wrong:** A cached plan may be reused across parameter values that need different plans.
 - **What is correct:** A plan is tied to a selectivity assumption.
 - **Problem it creates:** Some parameter values run 100x slower with no query change.
@@ -51,7 +51,7 @@
 
 ## 6C. Index design
 
-#### 6.6 "Slow query? Add an index" (was #20) [Certain]
+#### 6.6 "Slow query? Add an index" (was #20) 
 - **Why wrong:** An index adds write amplification, memory and storage cost, and planner options, and it may not match the query's shape. The real cause might be shape, stats, or volume.
 - **What is correct:** An index is a bet on a workload, justified by a measured access pattern.
 - **Problem it creates:** A pile of overlapping, unused indexes that slow writes and bloat the cache while the query stays slow.
@@ -59,7 +59,7 @@
 - **Meta:** What does the plan say about why this is slow? Could an existing index serve it with a small change?
 - **Second-order:** What is the write throughput impact and index build cost? Will the index stay useful when the query changes?
 
-#### 6.7 "Composite index column order doesn't matter much" (was #42) [Certain]
+#### 6.7 "Composite index column order doesn't matter much" (was #42) 
 - **Why wrong:** An index is ordered by its first column, then its second, and so on. It is usable through its leftmost prefix, a range column stops later columns from narrowing, and sort satisfaction depends on order.
 - **What is correct:** Column order encodes which queries the index can serve and in what order.
 - **Problem it creates:** An index that exists but isn't used, or is used with filtering after the scan.
@@ -67,7 +67,7 @@
 - **Meta:** Which queries need this index, and what are their predicates and orderings?
 - **Second-order:** Can one column order serve several queries, or do I need two indexes? Does my engine support skip-scan?
 
-#### 6.8 "An index-only scan never touches the table" (was #43) [Certain]
+#### 6.8 "An index-only scan never touches the table" (was #43) 
 - **Why wrong:** In PostgreSQL, visibility information lives in the heap, so index-only scans depend on the visibility map and recently modified pages need heap fetches. Other engines differ.
 - **What is correct:** Index-only access is conditional on the engine and on table churn.
 - **Problem it creates:** Covering queries that still hit disk.
@@ -75,7 +75,7 @@
 - **Meta:** How update-heavy is this table? What do plans show for heap fetches?
 - **Second-order:** Wide covering indexes raise write cost and size, and tuning vacuum adds background I/O.
 
-#### 6.9 "Search is a LIKE problem" (was #44) [Certain]
+#### 6.9 "Search is a LIKE problem" (was #44) 
 - **Why wrong:** Leading wildcards and locale collations defeat B-tree ordering, and LIKE has no relevance ranking, stemming, or typo tolerance.
 - **What is correct:** Text search needs inverted or trigram structures, or a search engine.
 - **Problem it creates:** Full scans on search queries and poor results.
@@ -85,7 +85,7 @@
 
 ## 6D. Specific query shapes
 
-#### 6.10 "ORDER BY ... LIMIT is cheap" (was #47) [Certain]
+#### 6.10 "ORDER BY ... LIMIT is cheap" (was #47) 
 - **Why wrong:** Without an index matching filter and order, the engine finds all matching rows and sorts them before taking N. With OFFSET it also discards the skipped rows.
 - **What is correct:** LIMIT bounds output, not the work of finding the top rows.
 - **Problem it creates:** Latency that scales with matching rows, and slow deep pages.
@@ -93,7 +93,7 @@
 - **Meta:** How many rows match before the limit? Is the sort order unique, or do ties exist?
 - **Second-order:** Keyset pagination can't jump to arbitrary page numbers, and multi-column sort directions need matching index definitions.
 
-#### 6.11 "COUNT(*) is fast" (was #48) [Certain]
+#### 6.11 "COUNT(*) is fast" (was #48) 
 - **Why wrong:** MVCC engines must check row visibility, so exact counts scan rows and cost grows with table size.
 - **What is correct:** An exact count is an O(n) question unless you maintain it.
 - **Problem it creates:** Dashboards and pagination totals that load the database.
@@ -101,7 +101,7 @@
 - **Meta:** Does anyone make a decision that depends on the exact number?
 - **Second-order:** Maintained counters add write contention, and approximate counts confuse users when they disagree with other views.
 
-#### 6.12 "Joins are expensive, so avoid them" (was #49) [Certain]
+#### 6.12 "Joins are expensive, so avoid them" (was #49) 
 - **Why wrong:** Indexed joins are the engine's core strength. Avoiding them through application-side joins adds round trips, and avoiding them through denormalization adds sync burden.
 - **What is correct:** Join cost depends on index availability and selectivity, and network hops cost more.
 - **Problem it creates:** N+1 patterns, drifting duplicate data, and slower overall performance.
@@ -109,7 +109,7 @@
 - **Meta:** What does the plan show: join method, rows in and out, index use?
 - **Second-order:** Large multi-way joins hit planner limits and estimation errors, and ORM-generated joins may over-fetch.
 
-#### 6.13 "Full table scans are always bad" (was #50) [Certain]
+#### 6.13 "Full table scans are always bad" (was #50) 
 - **Why wrong:** When a large fraction of rows is needed, or the table is small, a sequential scan beats random index lookups. Forcing indexes can slow queries.
 - **What is correct:** Cost is about total I/O relative to what the result needs.
 - **Problem it creates:** Reflexive index additions while real problems, like scanning 99% of a table to return one row, go unnoticed.

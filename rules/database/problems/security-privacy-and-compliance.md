@@ -7,7 +7,7 @@
 
 ## 11A. Access control and blast radius
 
-#### 11.1 "Encryption at rest means our data is secure" (was #96) [Certain]
+#### 11.1 "Encryption at rest means our data is secure" (was #96) 
 - **Why wrong:** It defends against stolen or decommissioned disks. The database decrypts transparently for any authenticated session, so injection, stolen application credentials, over-broad roles, and insiders bypass it entirely.
 - **What is correct:** Security is about who can obtain plaintext through any path, and at-rest encryption covers one path.
 - **Problem it creates:** False confidence and unreviewed access.
@@ -15,7 +15,7 @@
 - **Meta:** If one application credential leaks, what can the attacker read, and how soon would I notice?
 - **Second-order:** Column encryption breaks indexing and search, key management becomes a critical dependency, and audit logs themselves contain sensitive data.
 
-#### 11.2 "The internal network is trusted" (was #97) [Certain]
+#### 11.2 "The internal network is trusted" (was #97) 
 - **Why wrong:** One compromised service enables lateral movement, and shared credentials remove attribution and make revocation disruptive.
 - **What is correct:** Trust attaches to identity and authorization per request, not to network location.
 - **Problem it creates:** One compromise reaches every database.
@@ -25,7 +25,7 @@
 
 ## 11B. Data lifecycle and erasure
 
-#### 11.3 "Deleting a user's row deletes their data" (was #98) [Certain]
+#### 11.3 "Deleting a user's row deletes their data" (was #98) 
 - **Why wrong:** Copies live in replicas, backups, caches, logs, search indexes, warehouses, ML features, exports, event streams, and third parties.
 - **What is correct:** Erasure is a distributed operation over a graph of copies.
 - **Problem it creates:** Legal exposure, inability to demonstrate deletion, deleted data returning via a backup restore.

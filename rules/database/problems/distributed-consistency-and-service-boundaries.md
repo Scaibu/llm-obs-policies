@@ -6,7 +6,7 @@
 
 ## 9A. Consistency model
 
-#### 9.1 "CAP says pick two, so eventual consistency is a fine default" (was #12) [Likely]
+#### 9.1 "CAP says pick two, so eventual consistency is a fine default" (was #12) 
 - **Why wrong:** CAP speaks only to behavior during a partition and uses a narrow definition of consistency (linearizability). In normal operation the real tradeoff is latency versus consistency, and consistency is a spectrum. Declaring a whole system "eventually consistent" avoids the decision.
 - **What is correct:** Consistency is chosen per invariant, with a price attached.
 - **Problem it creates:** You either overpay (strong everywhere) or get incidents where weak consistency touched money, inventory, uniqueness, or permissions.
@@ -14,7 +14,7 @@
 - **Meta:** What does a violated invariant cost if it lasts 5 seconds? Who can observe the violation?
 - **Second-order:** Can a weakly consistent read feed a decision that needs strong consistency? (It usually can, and that's the leak.) Do two consistency regimes mean two code paths to test?
 
-#### 9.2 "Eventual consistency converges by itself" (was #90) [Likely]
+#### 9.2 "Eventual consistency converges by itself" (was #90) 
 - **Why wrong:** Convergence needs two things: every update eventually reaching every replica, and a deterministic merge rule. Without a merge rule, replicas stay different, and last-write-wins "converges" while silently discarding data.
 - **What is correct:** Convergence is a designed property of the delivery guarantee plus the merge function.
 - **Problem it creates:** Divergent replicas that nobody detects, and lost updates that look like normal operation.
@@ -24,7 +24,7 @@
 
 ## 9B. Boundaries and ownership
 
-#### 9.3 "Microservices should each own their database, always" (was #15) [Likely]
+#### 9.3 "Microservices should each own their database, always" (was #15) 
 - **Why wrong:** Database-per-service follows from an ownership boundary, so it isn't a rule. Applied by default it splits invariants across services (no shared transaction), removes joins, complicates reporting, and produces a distributed monolith.
 - **What is correct:** Boundaries follow invariants and rate of change. A modular monolith with per-module schema ownership is a legitimate boundary.
 - **Problem it creates:** Cross-service invariants with no enforcement, chatty calls on hot paths, lockstep deployments, duplicated data.
@@ -32,7 +32,7 @@
 - **Meta:** Which services must always deploy together? Which invariants cross my current boundaries?
 - **Second-order:** Reporting now needs a data platform. Contracts must stay versioned forever, and ownership disputes over shared concepts (customer, product) appear.
 
-#### 9.4 "Use distributed transactions or sagas to keep services consistent" (was #14) [Likely]
+#### 9.4 "Use distributed transactions or sagas to keep services consistent" (was #14) 
 - **Why wrong:** Two-phase commit couples availability to the coordinator and holds locks across participants. Sagas have no isolation (others see half-finished states), and compensations can fail or be impossible (an email already sent, goods already shipped).
 - **What is correct:** Avoid needing cross-boundary atomicity. Where you can't, make intermediate states first-class.
 - **Problem it creates:** Stuck sagas, exposed partial state, double or failed compensation.
@@ -40,7 +40,7 @@
 - **Meta:** Which step can't be compensated? What does another reader see mid-saga?
 - **Second-order:** Reservation expiry races with confirmation, compensation order matters, and long-running sagas need observability of their own.
 
-#### 9.5 "Event sourcing and CQRS are the advanced, correct design" (was #16) [Likely]
+#### 9.5 "Event sourcing and CQRS are the advanced, correct design" (was #16) 
 - **Why wrong:** They cost permanent event-schema evolution, projection rebuild time, eventual consistency between command and query sides, harder debugging, and trouble with erasure on immutable logs.
 - **What is correct:** Default to current state plus an append-only history. Use event sourcing where the sequence of facts is itself the asset.
 - **Problem it creates:** Complexity that exceeds the benefit, read-your-writes failures, projections that can't be rebuilt in time.
@@ -48,7 +48,7 @@
 - **Meta:** Which question can I answer only with the complete event history? How long does a full replay take?
 - **Second-order:** Event schemas live forever, projections multiply, and privacy deletion on immutable events needs crypto-shredding.
 
-#### 9.6 "The API can expose our ORM model directly" (was #86) [Likely]
+#### 9.6 "The API can expose our ORM model directly" (was #86) 
 - **Why wrong:** It welds clients to storage, so schema changes become breaking changes. Client-controlled shapes can trigger N+1 or unbounded queries, internal fields leak, and authorization attaches to entities instead of use cases.
 - **What is correct:** An API is a contract with its own lifecycle and cost model.
 - **Problem it creates:** Schema that can't change, overload from client queries, accidental data exposure.
@@ -58,7 +58,7 @@
 
 ## 9C. Communication and failure semantics
 
-#### 9.7 "The network is reliable and fast inside our data center" (was #81) [Certain]
+#### 9.7 "The network is reliable and fast inside our data center" (was #81) 
 - **Why wrong:** Packet loss, retransmits, gray failures (slow rather than dead), GC and VM pauses, and tail latency are normal. With fan-out, rare tail events become frequent: a request touching 50 services hits a slow one most of the time.
 - **What is correct:** Every remote call has unbounded latency and an ambiguous outcome.
 - **Problem it creates:** Stuck threads and connections, cascading latency, writes whose result is unknown.
@@ -66,7 +66,7 @@
 - **Meta:** What happens when this dependency takes 30 seconds? Which calls are critical-path versus optional?
 - **Second-order:** Hedging adds load, fallback paths go untested until an incident, and degraded modes need chaos testing.
 
-#### 9.8 "Redundancy removes single points of failure" (was #83) [Likely]
+#### 9.8 "Redundancy removes single points of failure" (was #83) 
 - **Why wrong:** Redundant components share failure causes: the same deploy, config, library bug, AZ, DNS, certificate expiry, auth provider, or traffic surge.
 - **What is correct:** Redundancy helps against independent failures, and correlated failures need isolation.
 - **Problem it creates:** N+1 systems that are fully down because all replicas fail together.
@@ -76,7 +76,7 @@
 
 ## 9D. Event-driven systems
 
-#### 9.9 "Kafka (or any log) is our database" (was #84) [Likely]
+#### 9.9 "Kafka (or any log) is our database" (was #84) 
 - **Why wrong:** Logs have retention and compaction semantics, no ad-hoc queries, ordering only within a partition, and replay costs that grow with history.
 - **What is correct:** A log is transport and history, and current state needs a queryable store.
 - **Problem it creates:** Data lost at retention expiry, no way to ask "what is X's state now" without replay.
@@ -84,7 +84,7 @@
 - **Meta:** What happens when retention expires? Can I answer "current state of X" without replaying?
 - **Second-order:** Compaction deletes history, infinite retention costs money, and replay can overload downstream systems.
 
-#### 9.10 "Our event stream guarantees ordering" (was #85) [Certain]
+#### 9.10 "Our event stream guarantees ordering" (was #85) 
 - **Why wrong:** Order exists per partition only, and only if producers retry safely and consumers process serially per key. Parallel consumers, retries, cross-topic flows, and repartitioning all reorder effects.
 - **What is correct:** Order is defined per key and preserved only if both ends are built for it.
 - **Problem it creates:** Stale updates overwrite newer state, and deletes arrive before creates.

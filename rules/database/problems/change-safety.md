@@ -6,7 +6,7 @@
 
 ## 5A. Planning and compatibility
 
-#### 5.1 "Schema design is a phase we finish before building" (was #2) [Certain]
+#### 5.1 "Schema design is a phase we finish before building" (was #2) 
 - **Why wrong:** The schema encodes your day-one understanding of the business, which is the least informed you will ever be. The business changes, so a "finished" schema becomes a constraint.
 - **What is correct:** The schema is a versioned contract that keeps evolving. Design effort belongs on irreversible choices, and reversible ones can stay light.
 - **Problem it creates:** Over-design (speculative tables and columns) or fear of change (workarounds pile up in application code and old columns get repurposed).
@@ -14,7 +14,7 @@
 - **Meta:** Which decisions here would cost a project to reverse at 10x data? Which assumption would invalidate each?
 - **Second-order:** Does a good migration pipeline tempt sloppiness on the expensive decisions? How do I stop reversible decisions from silently becoming irreversible as dependents accumulate?
 
-#### 5.2 "Schema migration is a deployment step" (was #25) [Certain]
+#### 5.2 "Schema migration is a deployment step" (was #25) 
 - **Why wrong:** On a live system a migration runs while old and new application versions coexist, takes locks, and generates load. It is a rollout, not a step.
 - **What is correct:** Every change must be valid for the application version before it and the version after it.
 - **Problem it creates:** Errors when old code meets new schema, and rollbacks that can't undo the change.
@@ -22,7 +22,7 @@
 - **Meta:** Which application versions can run against each intermediate schema? What is the rollback at each step?
 - **Second-order:** How long must the compatibility window stay open when releases are slow (mobile clients)? How do I verify old and new copies agree during dual writes?
 
-#### 5.3 "Deploy the schema first, then the code, always" (was #77) [Likely]
+#### 5.3 "Deploy the schema first, then the code, always" (was #77) 
 - **Why wrong:** Direction matters. Additions go schema-first, removals go code-first, renames and type changes need several steps, and during rollout both code versions run.
 - **What is correct:** Order is set by compatibility in both directions.
 - **Problem it creates:** Errors in the rollout window, such as old code hitting a dropped column or new code hitting a missing one.
@@ -30,7 +30,7 @@
 - **Meta:** Which versions run at the same time, including long-lived workers and cached clients?
 - **Second-order:** How do I enforce the matrix in CI (test N against S+1)? What about consumers I don't deploy, such as partners reading my database?
 
-#### 5.4 "Rollback means running the down migration" (was #75) [Certain]
+#### 5.4 "Rollback means running the down migration" (was #75) 
 - **Why wrong:** Data transformations and drops destroy information, and writes made after deploy may not be representable in the old schema.
 - **What is correct:** Production rolls forward. Rollback ability is a design property (compatibility), not a script.
 - **Problem it creates:** A down migration that loses data, or can't run because new data violates old constraints.
@@ -40,7 +40,7 @@
 
 ## 5B. Executing changes on live data
 
-#### 5.5 "Adding a column is a safe, quick migration" (was #74) [Likely]
+#### 5.5 "Adding a column is a safe, quick migration" (was #74) 
 - **Why wrong:** Some changes rewrite the table (engine and version dependent). Even instant ones need a brief exclusive lock that queues behind any long transaction, and every later query then queues behind the waiting lock.
 - **What is correct:** The danger is the lock queue, not the operation's duration.
 - **Problem it creates:** A full traffic stall from a "trivial" DDL on a busy table.
@@ -48,7 +48,7 @@
 - **Meta:** Which transactions may be open when this runs? What lock level does this statement need in my version?
 - **Second-order:** Does repeated lock timeout leave migrations half-applied? Do failed concurrent builds leave invalid indexes that need cleanup?
 
-#### 5.6 "A backfill is just an UPDATE" (was #76) [Certain]
+#### 5.6 "A backfill is just an UPDATE" (was #76) 
 - **Why wrong:** One giant statement holds locks, produces huge WAL/binlog, lags replicas, bloats storage, and can't resume after failure.
 - **What is correct:** A backfill is a production workload and must be throttled, resumable, and idempotent.
 - **Problem it creates:** Replica lag, lock pile-ups, bloat, and half-done runs.
@@ -56,7 +56,7 @@
 - **Meta:** Can I kill it at any point and resume? How do I know it finished correctly?
 - **Second-order:** Do rows written during the backfill get missed? Does batching leave vacuum and bloat work behind afterward?
 
-#### 5.7 "Column defaults are harmless" (was #78) [Likely]
+#### 5.7 "Column defaults are harmless" (was #78) 
 - **Why wrong:** A default turns "the writer forgot" into valid-looking data. On some engines and versions, adding a default or NOT NULL rewrites or scans the table.
 - **What is correct:** A default is a business statement ("absent means X") and is valid only if X is true.
 - **Problem it creates:** Wrong data indistinguishable from real data, skewed analytics, hidden bugs.
@@ -66,7 +66,7 @@
 
 ## 5C. Change control
 
-#### 5.8 "Generated migrations are safe" (was #79) [Certain]
+#### 5.8 "Generated migrations are safe" (was #79) 
 - **Why wrong:** Tools infer intent from diffs (a rename looks like drop-and-add) and don't know table sizes, lock levels, or traffic.
 - **What is correct:** Generated SQL is a draft, and its safety depends on context the tool lacks.
 - **Problem it creates:** Data loss on renames, blocking index builds, long locks, type rewrites.
@@ -74,7 +74,7 @@
 - **Meta:** What statements does this generate, and what lock does each take? Does anything drop data?
 - **Second-order:** Does the gate slow teams enough that they bypass it? Does the schema in code still match production after manual fixes (drift)?
 
-#### 5.9 "Config and flag changes are safe any time" (was #89) [Certain]
+#### 5.9 "Config and flag changes are safe any time" (was #89) 
 - **Why wrong:** Config changes alter system-wide behavior instantly, often with no review, tests, or staged rollout.
 - **What is correct:** Config is code with a faster, less supervised deployment path.
 - **Problem it creates:** Outages from a flag flip, timeout change, or limit change, with no record of who changed what.

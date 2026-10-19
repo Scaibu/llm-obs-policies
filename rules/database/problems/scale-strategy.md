@@ -8,7 +8,7 @@
 
 ## 8A. When and what to scale
 
-#### 8.1 "At scale we need distributed databases, so design for that from the start" (was #6) [Likely]
+#### 8.1 "At scale we need distributed databases, so design for that from the start" (was #6) 
 - **Why wrong:** Most systems never reach the limits of a well-tuned single node, and early distribution costs complexity and weakens guarantees.
 - **What is correct:** Scale in stages guided by measured bottlenecks.
 - **Problem it creates:** Slower development, harder debugging, and weaker invariants for hypothetical load.
@@ -16,7 +16,7 @@
 - **Meta:** Which resource limit will I hit first, and at what load? What number triggers the next step?
 - **Second-order:** Is the shardable key actually present in every table? Does delaying make a later migration harder?
 
-#### 8.2 "Horizontal scaling is always better than vertical" (was #9) [Likely]
+#### 8.2 "Horizontal scaling is always better than vertical" (was #9) 
 - **Why wrong:** Horizontal wins at the ceiling. Below it, vertical is simpler and cheaper in engineering time.
 - **What is correct:** Scale up until cost, failure domain, or a hard limit demands scaling out.
 - **Problem it creates:** Premature distribution complexity, or hitting the ceiling with no plan.
@@ -24,7 +24,7 @@
 - **Meta:** How far is current load from the largest instance?
 - **Second-order:** What is the resize procedure and downtime? A single node is a single failure domain, and licensing costs may change with size.
 
-#### 8.3 "NoSQL scales, SQL doesn't" (was #7) [Certain]
+#### 8.3 "NoSQL scales, SQL doesn't" (was #7) 
 - **Why wrong:** Scalability comes from the data model and access pattern (partitionability). NoSQL stores achieve it by removing cross-partition capabilities.
 - **What is correct:** Choose the store by access patterns and invariants.
 - **Problem it creates:** Application code reimplements joins and consistency, and query changes become expensive.
@@ -34,7 +34,7 @@
 
 ## 8B. Choosing the store
 
-#### 8.4 "Use the best database for each job" (was #19b) [Likely]
+#### 8.4 "Use the best database for each job" (was #19b) 
 - **Why wrong:** Each additional store adds operational burden, failure modes, expertise needs, and a synchronization problem.
 - **What is correct:** There is one system of record, and the others are derived, rebuildable projections.
 - **Problem it creates:** Inconsistent copies, several sources of truth, and complex incident response.
@@ -44,7 +44,7 @@
 
 ## 8C. Copies of data
 
-#### 8.5 "Caching is a performance feature" (was #10) [Certain]
+#### 8.5 "Caching is a performance feature" (was #10) 
 - **Why wrong:** A cache is a second copy with its own consistency, invalidation, stampede, and cold-start behavior, and it can hide slow queries.
 - **What is correct:** A cache is derived data with an explicit staleness contract.
 - **Problem it creates:** Stale reads, thundering herds, and outages when the cache is cold.
@@ -52,7 +52,7 @@
 - **Meta:** What happens if the cache is empty? How stale may this data be?
 - **Second-order:** Cache-key design couples to write paths, and memory sizing and eviction change which data stays hot.
 
-#### 8.6 "Read replicas scale reads transparently" (was #11) [Certain]
+#### 8.6 "Read replicas scale reads transparently" (was #11) 
 - **Why wrong:** Replicas lag, so reads can return old data. They scale reads only, they inherit the same bad queries, and lag grows under load.
 - **What is correct:** A replica read is a view of the past.
 - **Problem it creates:** Read-your-writes violations, stale decisions, and lag-driven errors.

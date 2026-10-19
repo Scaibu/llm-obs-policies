@@ -6,7 +6,7 @@ This is a new reference covering every Tier 1 area: **200 algorithms**, with no 
 - **Part 3 (#101–150): Classical machine learning.** Linear models, trees and boosting, kernel and instance methods, clustering and mixtures, probabilistic models, anomaly detection, time series, model selection, online learning and drift.
 - **Part 4 (#151–200): Experimentation and statistics.** Testing foundations, randomization and validity checks, variance reduction, sequential and Bayesian testing, multiple testing, complex designs, heterogeneous effects and uplift, observational causal inference, and robust statistics.
 
-Standard definitions here are [Certain]. Where details differ between systems (Flink, Kafka Streams, Spark, specific caches), entries say so.
+Standard definitions here are . Where details differ between systems (Flink, Kafka Streams, Spark, specific caches), entries say so.
 
 ---
 

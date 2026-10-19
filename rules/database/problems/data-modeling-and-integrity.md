@@ -7,7 +7,7 @@
 
 ## 7A. Decomposition
 
-#### 7.1 "The model should mirror the real world: one entity, one table" (was #4) [Likely]
+#### 7.1 "The model should mirror the real world: one entity, one table" (was #4) 
 - **Why wrong:** Real-world objects play several roles with different lifecycles and invariants, and mapping nouns to tables merges conflicting concerns.
 - **What is correct:** Tables are drawn along invariants, change patterns, and access patterns.
 - **Problem it creates:** God tables, columns that are nullable by role, awkward constraints.
@@ -15,7 +15,7 @@
 - **Meta:** Which attributes change together? Which invariants span them?
 - **Second-order:** More tables mean more joins, so I need views or an API layer to present the unified entity.
 
-#### 7.2 "One wide table with every attribute is simple" (was #41) [Likely]
+#### 7.2 "One wide table with every attribute is simple" (was #41) 
 - **Why wrong:** Wide rows mean fewer rows per page and colder caches, and hot and cold columns share row churn. Large values add overhead.
 - **What is correct:** Physical rows should group columns by access and update pattern.
 - **Problem it creates:** Bloat, slow scans, write amplification.
@@ -23,7 +23,7 @@
 - **Meta:** Which columns are read together, and which are updated together?
 - **Second-order:** Reassembling rows costs joins, and consistency across split rows needs the same transaction.
 
-#### 7.3 "Normalize first, denormalize only when slow" (was #3) [Likely]
+#### 7.3 "Normalize first, denormalize only when slow" (was #3) 
 - **Why wrong:** Both choices trade write cost against read cost. "Only when slow" ignores update-anomaly risk and treats normal form as moral rather than economic.
 - **What is correct:** Each fact has one owner, and copies are allowed only with a defined refresh and verification.
 - **Problem it creates:** Drifting copies and inconsistent totals, or over-normalized read paths with join explosion.
@@ -33,7 +33,7 @@
 
 ## 7B. Lifecycle and deletion
 
-#### 7.4 "A status column models a lifecycle" (was #35) [Likely]
+#### 7.4 "A status column models a lifecycle" (was #35) 
 - **Why wrong:** It allows any value-to-value change, loses transition history, and combines with flags into impossible states.
 - **What is correct:** A lifecycle is states plus allowed transitions plus who and when.
 - **Problem it creates:** Illegal transitions (refund before payment), unexplained states, races on transitions.
@@ -41,7 +41,7 @@
 - **Meta:** Which transitions are legal? What invariants hold in each state?
 - **Second-order:** Adding states needs migration and code updates, and concurrent transitions need conflict handling.
 
-#### 7.5 "Soft delete is the safe way to delete" (was #18) [Certain]
+#### 7.5 "Soft delete is the safe way to delete" (was #18) 
 - **Why wrong:** Deleted rows stay visible to every query that forgets the filter, collide with unique constraints, inflate tables and indexes, and don't satisfy erasure requirements.
 - **What is correct:** "Delete" has distinct purposes: hide, undo, retain for audit, erase.
 - **Problem it creates:** Leaks of deleted data through a missed filter, uniqueness conflicts, compliance failures, slower tables.
@@ -49,7 +49,7 @@
 - **Meta:** Why do we keep deleted rows, for whom, and for how long?
 - **Second-order:** Restoring needs conflict handling, foreign keys may point at deleted rows, and erasure must reach archives and backups.
 
-#### 7.6 "Foreign keys slow the database, so drop them" (was #31) [Likely]
+#### 7.6 "Foreign keys slow the database, so drop them" (was #31) 
 - **Why wrong:** FK cost is a bounded lookup per write (plus locks on parent rows), while the benefit is system-wide integrity.
 - **What is correct:** FKs are an integrity tool with a measurable cost.
 - **Problem it creates:** Accumulating orphans, dangling references after deletes, hidden data bugs.
@@ -59,7 +59,7 @@
 
 ## 7C. Structure versus flexibility
 
-#### 7.7 "A flexible schema (JSON or schemaless) gives us agility" (was #19) [Likely]
+#### 7.7 "A flexible schema (JSON or schemaless) gives us agility" (was #19) 
 - **Why wrong:** The schema moves into code, undocumented and unenforced. You lose constraints and good statistics, and migrating shapes is painful.
 - **What is correct:** Flexibility needs explicit schema-evolution rules.
 - **Problem it creates:** Readers handling many shapes, silent bad data, slow queries on unindexed paths.
@@ -67,7 +67,7 @@
 - **Meta:** Which JSON keys are queried today? Who reads each shape?
 - **Second-order:** Promotion migrations on large tables are costly, and readers must handle both shapes during the transition.
 
-#### 7.8 "Arrays or comma-separated values are a shortcut for many-to-many" (was #38) [Certain]
+#### 7.8 "Arrays or comma-separated values are a shortcut for many-to-many" (was #38) 
 - **Why wrong:** No referential integrity, awkward indexing and updates, and ambiguous parsing.
 - **What is correct:** Relationships are rows.
 - **Problem it creates:** Orphan references, slow membership queries, update races on the whole array.
@@ -77,7 +77,7 @@
 
 ## 7D. Derived data
 
-#### 7.9 "Maintain counters with UPDATE count = count + 1 on the parent row" (was #37) [Certain]
+#### 7.9 "Maintain counters with UPDATE count = count + 1 on the parent row" (was #37) 
 - **Why wrong:** It causes hot-row contention, duplicate increments on retries, and drift from the real rows.
 - **What is correct:** Counters are derived data.
 - **Problem it creates:** Throughput collapse on popular rows and wrong counts.

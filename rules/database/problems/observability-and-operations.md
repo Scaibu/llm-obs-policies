@@ -7,7 +7,7 @@
 
 ## 10A. Detection and diagnosis
 
-#### 10.1 "Monitoring CPU and averages is enough" (was #93) [Certain]
+#### 10.1 "Monitoring CPU and averages is enough" (was #93) 
 - **Why wrong:** Users experience the tail, and database failures show up as saturation (connection waits, lock waits, queue depth, replication lag, vacuum lag), not CPU. Averages hide bimodal behavior.
 - **What is correct:** Monitor user-visible symptoms and per-resource saturation.
 - **Problem it creates:** Incidents detected by customers, and alerts that fire on harmless CPU while real deadlocks stay quiet.
@@ -15,7 +15,7 @@
 - **Meta:** Which user-visible failure triggers no alert today? How far apart are my p50 and p99?
 - **Second-order:** Alert fatigue, the cost of high-cardinality metrics, and SLO targets that drive perverse behavior.
 
-#### 10.2 "Logging everything gives us observability" (was #94) [Likely]
+#### 10.2 "Logging everything gives us observability" (was #94) 
 - **Why wrong:** Volume buries signal, costs money, risks PII, and still can't answer questions unless events are structured and correlated.
 - **What is correct:** Observability is the ability to ask new questions of the system using rich, correlated events.
 - **Problem it creates:** Expensive logs that can't locate the one failing request.
@@ -25,7 +25,7 @@
 
 ## 10B. Configuration
 
-#### 10.3 "Database defaults are production-ready" (was #95) [Certain]
+#### 10.3 "Database defaults are production-ready" (was #95) 
 - **Why wrong:** Defaults are conservative so the engine starts on small machines (memory settings often far below what the hardware offers) and unbounded where you need bounds (statement time, idle-in-transaction time). They vary by version.
 - **What is correct:** Defaults are a starting point of unknown fit.
 - **Problem it creates:** Wasted hardware, runaway queries, unbounded waits, autovacuum too slow for big tables.
@@ -35,7 +35,7 @@
 
 ## 10C. Managed services
 
-#### 10.4 "A managed database means operations are handled" (was #99) [Likely]
+#### 10.4 "A managed database means operations are handled" (was #99) 
 - **Why wrong:** The provider runs the platform, not your workload. Query tuning, schema design, connection management, capacity planning, application behavior during failover, maintenance windows, quotas, and version end-of-life remain yours.
 - **What is correct:** Responsibility is shared, with a boundary you must know.
 - **Problem it creates:** Surprise failovers during maintenance, IOPS or burst-credit exhaustion, connection limits, forced upgrades, no low-level access during an incident.

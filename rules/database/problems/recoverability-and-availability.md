@@ -6,7 +6,7 @@
 
 ## 4A. Data safety and restore
 
-#### 4.1 "We have replication and failover, so we're safe" (was #24) [Certain]
+#### 4.1 "We have replication and failover, so we're safe" (was #24) 
 - **Why wrong:** Replication copies damage instantly, and a bad DELETE, corruption, or ransomware replicates to every replica.
 - **What is correct:** High availability keeps service up through component failure, and recoverability restores correct state after data is damaged. They are different mechanisms.
 - **Problem it creates:** Fast, consistent loss of data with no way back.
@@ -14,7 +14,7 @@
 - **Meta:** Which failure does each mechanism cover, and which does it not? What is the oldest damage I could still recover from?
 - **Second-order:** What does PITR retention cost? A restore to a past point loses later legitimate writes, so how would I reapply them?
 
-#### 4.2 "Backups are fine if the job exits successfully" (was #62) [Certain]
+#### 4.2 "Backups are fine if the job exits successfully" (was #62) 
 - **Why wrong:** A job can succeed while producing unusable backups, and logical corruption flows into them unnoticed.
 - **What is correct:** A backup is proven only by a restore.
 - **Problem it creates:** Discovering during an incident that backups are empty, incomplete, corrupt, or too slow to restore.
@@ -22,7 +22,7 @@
 - **Meta:** When did I last restore, and how long did it take? How long until I'd notice silent corruption?
 - **Second-order:** Does restore testing expose production data to a less-protected environment? Will restore time outgrow the RTO as data grows?
 
-#### 4.3 "Multi-AZ is disaster recovery" (was #63) [Certain]
+#### 4.3 "Multi-AZ is disaster recovery" (was #63) 
 - **Why wrong:** Multi-AZ covers instance and zone failure only.
 - **What is correct:** Failure domains nest (instance, zone, region, account, provider, human, software), and each needs a recovery path.
 - **Problem it creates:** Region outages, account compromise, and accidental deletion have no answer.
@@ -30,7 +30,7 @@
 - **Meta:** Which failure classes have no mechanism? Who can delete everything with one credential?
 - **Second-order:** Does cross-region replication add lag and cost? Does account separation complicate restores during an incident?
 
-#### 4.4 "If the database recovers, the system recovers" (was #67) [Likely]
+#### 4.4 "If the database recovers, the system recovers" (was #67) 
 - **Why wrong:** State lives in queues, caches, object storage, secrets, and configs, and a restored database may disagree with them.
 - **What is correct:** Recovery must produce a mutually consistent set of stores.
 - **Problem it creates:** A restored database referencing missing objects, queues replaying already-applied events, stale caches.
@@ -40,7 +40,7 @@
 
 ## 4B. Failover correctness
 
-#### 4.5 "Automatic failover is safer than manual" (was #61) [Likely]
+#### 4.5 "Automatic failover is safer than manual" (was #61) 
 - **Why wrong:** Failover is a distributed decision under uncertainty, and its safety depends on never having two writers.
 - **What is correct:** Promotion is safe only after the old primary is provably unable to write.
 - **Problem it creates:** Split-brain, flapping, and promotion of a lagging replica, all of which cause data loss or corruption.
@@ -48,7 +48,7 @@
 - **Meta:** How do I know the old primary is really down? What is the worst data loss at promotion, and is it acceptable?
 - **Second-order:** What if the fencing action itself fails? What does the application do during the failover window?
 
-#### 4.6 "Synchronous replication means zero data loss" (was #60) [Likely]
+#### 4.6 "Synchronous replication means zero data loss" (was #60) 
 - **Why wrong:** The loss bound equals the acknowledged durability point plus the failure combinations tolerated.
 - **What is correct:** "Synchronous" is a family of settings (received, flushed, applied), and behavior when the standby disappears is a separate decision.
 - **Problem it creates:** Writes block when the standby is down, or silently degrade to async, and acknowledgment can precede durable flush.
@@ -56,7 +56,7 @@
 - **Meta:** What exactly is acknowledged to the client? What happens when the sync standby is unreachable?
 - **Second-order:** How much write latency does cross-zone sync add? Does blocking on standby loss create an availability problem?
 
-#### 4.7 "The failover target is as capable as the primary" (was #65) [Likely]
+#### 4.7 "The failover target is as capable as the primary" (was #65) 
 - **Why wrong:** Standbys are often smaller, run different configuration, and have cold caches.
 - **What is correct:** A standby is a production system that hasn't been given traffic yet.
 - **Problem it creates:** Promotion meets RTO on paper and then collapses under full load.
@@ -64,7 +64,7 @@
 - **Meta:** Could the standby carry today's peak? How long until its cache is warm?
 - **Second-order:** Does equal sizing double cost? If I use the standby for reads, how does that change failover behavior?
 
-#### 4.8 "Active-active multi-region is free availability" (was #64) [Likely]
+#### 4.8 "Active-active multi-region is free availability" (was #64) 
 - **Why wrong:** Concurrent writers need a conflict rule, and the speed of light bounds synchronous agreement across regions.
 - **What is correct:** Multi-region writes trade availability against consistency and latency, and the conflict rule is a business decision.
 - **Problem it creates:** Lost updates under last-write-wins, anomalies, high commit latency under consensus.
@@ -74,7 +74,7 @@
 
 ## 4C. Slow-burn failure
 
-#### 4.9 "Storage grows linearly and visibly" (was #66) [Likely]
+#### 4.9 "Storage grows linearly and visibly" (was #66) 
 - **Why wrong:** Disk consumption includes retained logs, stalled replication slots, temp space, bloat, and in-flight backups, each growing independently.
 - **What is correct:** The dangerous consumers are the ones nobody is watching.
 - **Problem it creates:** Disk-full halts the database, often with a complicated recovery.
