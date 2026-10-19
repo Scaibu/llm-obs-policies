@@ -78,7 +78,7 @@ Multi-target polyglot infrastructure deployment and release specifications:
 
 4. src/
 Application core source code:
-- src/main.[ext] (Root application bootstrap, DI wiring, and server runner)
+- src/main.[ext] (Root application bootstrap, DI wiring, and server runner adhering strictly to 07-main-file.md 9-phase lifecycle)
 - src/api/ (Delivery ingress and contract specifications: contracts/, rest/v1/, graphql/v1/, grpc/v1/, events/)
 - src/features/{feature-name}/ (Hexagonal domain feature modules: contracts/, domain/, infrastructure/, service/, tests/)
 - src/infra/ (Centralized infrastructure adapters: config/, clients/, observability/)
