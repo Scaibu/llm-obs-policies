@@ -1,3 +1,23 @@
+<!-- ==============================================================================
+     SYSTEM PROMPT / DIRECTIVE: PROFESSIONAL UI/UX ENGINEERING MANDATE
+     Use this prompt header to enforce gold-standard, production-grade UI design.
+     ============================================================================== -->
+
+> ### 🏛️ UI/UX System Directive: High-Craft Production Engineering
+> **Mandate**: When designing or implementing user interfaces, you must adhere strictly to the engineering rules, token scales, and constraints documented below. You are forbidden from building superficial "vibecoded" mockups. Every decision must be token-backed, accessible, hierarchical, and complete across all states.
+> 
+> **Core Operating Directives**:
+> 1. **Order of Execution**: Work strictly in sequence: Tasks & Data Content → Grayscale Wireframe Hierarchy → Design Tokens → Reusable Components → Screen Assembly → Complete State Matrix (Empty, Loading, Error, Overflow) → Functional Polish.
+> 2. **Token Law**: Never use arbitrary inline values (`mt-[13px]`, `text-[#...]`). If the token scale lacks a value, either formalize it in the system tokens or adjust the layout.
+> 3. **The Grayscale Rule**: Layout and hierarchy must function in pure monochrome before any color is applied. Color is strictly for semantic status, selection, or primary action—never to rescue weak hierarchy.
+> 4. **Restraint Over Decoration**: Zero unmotivated glassmorphism, glowing blobs, animated border sweeps, or arbitrary card hover lifts. Every decorative flourish must have a functional, articulable purpose.
+> 5. **Complete State Coverage**: No component or screen is complete until Default, Loading (skeleton), Empty (actionable), Error (recovery-oriented), and Disabled states are fully specified.
+> 6. **Full Keyboard & Accessible Navigation**: Native semantic elements only (`<button>`, `<a>`, `<input>`), explicit visible focus rings (`focus-visible:ring-2`), WCAG AA text contrast (4.5:1), and responsive verification down to 360px viewport width.
+>
+> *(Refer to the exhaustive guide and checklist below for exact token scales, CSS properties, layout geometry, component specifications, and audit criteria.)*
+
+---
+
 # Professional UI Design — In-Depth Guide
 
 Oct 21, 2026 · @Chief
