@@ -1,20 +1,38 @@
 <!-- ==============================================================================
-     SYSTEM PROMPT / DIRECTIVE: PROFESSIONAL UI/UX ENGINEERING MANDATE
-     Use this prompt header to enforce gold-standard, production-grade UI design.
+     STRICT SYSTEM INSTRUCTIONS: PROFESSIONAL UI/UX DESIGN MANDATE
      ============================================================================== -->
 
-> ### 🏛️ UI/UX System Directive: High-Craft Production Engineering
-> **Mandate**: When designing or implementing user interfaces, you must adhere strictly to the engineering rules, token scales, and constraints documented below. You are forbidden from building superficial "vibecoded" mockups. Every decision must be token-backed, accessible, hierarchical, and complete across all states.
-> 
-> **Core Operating Directives**:
-> 1. **Order of Execution**: Work strictly in sequence: Tasks & Data Content → Grayscale Wireframe Hierarchy → Design Tokens → Reusable Components → Screen Assembly → Complete State Matrix (Empty, Loading, Error, Overflow) → Functional Polish.
-> 2. **Token Law**: Never use arbitrary inline values (`mt-[13px]`, `text-[#...]`). If the token scale lacks a value, either formalize it in the system tokens or adjust the layout.
-> 3. **The Grayscale Rule**: Layout and hierarchy must function in pure monochrome before any color is applied. Color is strictly for semantic status, selection, or primary action—never to rescue weak hierarchy.
-> 4. **Restraint Over Decoration**: Zero unmotivated glassmorphism, glowing blobs, animated border sweeps, or arbitrary card hover lifts. Every decorative flourish must have a functional, articulable purpose.
-> 5. **Complete State Coverage**: No component or screen is complete until Default, Loading (skeleton), Empty (actionable), Error (recovery-oriented), and Disabled states are fully specified.
-> 6. **Full Keyboard & Accessible Navigation**: Native semantic elements only (`<button>`, `<a>`, `<input>`), explicit visible focus rings (`focus-visible:ring-2`), WCAG AA text contrast (4.5:1), and responsive verification down to 360px viewport width.
->
-> *(Refer to the exhaustive guide and checklist below for exact token scales, CSS properties, layout geometry, component specifications, and audit criteria.)*
+# 🚨 STRICT SYSTEM INSTRUCTIONS: ZERO-TOLERANCE UI/UX SPECIFICATION
+
+> **CRITICAL MANDATE**: You are strictly required to design and implement user interfaces adhering 100% to the rules, tokens, and constraints specified in this document. Any deviation, shortcut, or arbitrary styling will result in an **IMMEDIATE REJECTION** of the output.
+
+### NON-NEGOTIABLE EXECUTION RULES:
+
+1. **STRICT SEQUENCE OF WORK (DO NOT SKIP)**:
+   - Step 1: **Tasks & Real Data Content First**: Rank user goals and provide real data samples (max length, edge numbers, empty cases).
+   - Step 2: **Grayscale Hierarchy First**: Layout must be 100% readable and hierarchically distinct in monochrome before touching any color. If it doesn't work in grayscale, it fails.
+   - Step 3: **Token System**: All values must come from the defined scales below (4px base spacing, strict modular type, defined radius, discrete elevation).
+   - Step 4: **Component Primitives**: Build unified primitives; never write ad-hoc element styles.
+   - Step 5: **Full State Coverage**: Every view MUST explicitly include: `default`, `loading (skeleton)`, `empty (actionable)`, `error (recovery-oriented)`, `overflow`, and `disabled`.
+   - Step 6: **Functional Polish Last**: Motion only if it communicates state change.
+
+2. **ABSOLUTE BAN ON ARBITRARY VALUES**:
+   - **NEVER** use arbitrary inline Tailwind values (e.g., `mt-[13px]`, `w-[320px]`, `text-[#...]`).
+   - If a value does not exist in the design system, you are **FORBIDDEN** from inventing one on the fly. You must map it to the closest token or define it globally.
+
+3. **ABSOLUTE BAN ON AI-SLOP & UNMOTIVATED DECORATION**:
+   - **NO** decorative gradients on hero sections, buttons, borders, or text (`bg-clip-text` is forbidden).
+   - **NO** decorative blurred glowing blobs, ambient lights, or floating spheres.
+   - **NO** gratuitous glassmorphism (`backdrop-blur` on static cards is forbidden).
+   - **NO** hover scale/lift (`-translate-y-1`, `scale-105`) on non-clickable cards.
+   - **NO** emojis in headings, UI controls, or buttons.
+   - **NO** generic marketing fluff ("Unlock your potential", "Supercharge"). Use precise domain terminology.
+
+4. **STRICT ACCESSIBILITY & RESPONSIVENESS**:
+   - **Semantic Elements Only**: Never use `<div onClick>`. Always use `<button>` or `<a>`.
+   - **Visible Keyboard Focus**: Every interactive control must provide an unambiguous visible focus ring (`focus-visible:ring-2`).
+   - **Contrast**: Text contrast must meet or exceed WCAG AA (4.5:1 for body copy).
+   - **360px Mobile Floor**: UI must function seamlessly at 360px width with ZERO horizontal scroll.
 
 ---
 
