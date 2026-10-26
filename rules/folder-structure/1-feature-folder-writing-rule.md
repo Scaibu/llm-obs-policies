@@ -17,7 +17,10 @@ contract_version: "2.1"
  
 # PART I: STRICT GUARDRAILS (WHAT NOT TO DO AT ALL)
 
-0. **STRICT NON-ASSUMPTION & SCOPE ISOLATION INVARIANT**: Strictly never assume anything and do not create anything extra unless explicitly requested by the user.
+0. **STRICT NON-ASSUMPTION & EXISTING LIBRARY INVARIANT**:
+   - Strictly never assume anything.
+   - Always verify if an established, production-grade library already exists for the task (e.g., `tree-sitter`, `numpy`, `langchain-text-splitters`, `qdrant-client`). If an existing library is available, use it instead of hand-crafting or rewriting parsing, mathematical, or algorithmic logic from scratch.
+   - Strictly never create anything extra or unsolicited unless explicitly requested by the user.
 
 These are non-negotiable negative constraints and architectural invariants. Systems, AI agents, and engineers MUST review these first before taking any action:
 
