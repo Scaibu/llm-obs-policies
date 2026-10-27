@@ -30,7 +30,41 @@ These are non-negotiable negative constraints and architectural invariants. Syst
 4. **NEVER Bypass Inversion of Control:** Backend `service` imports `repository.port` only. Never import concrete database drivers, ORM clients, Kafka producers, or HTTP fetch/axios into domain services.
 5. **NEVER Write Inline Raw SQL:** SQL queries exist solely inside `queries/{f}.queries` as named `FLOW_*` constants. Never write ad-hoc SQL strings in repositories or services.
 6. **NEVER Write Inline Comments:** Document algorithm blueprint at the top of the file in the header docblock. Function bodies must be 100% comment-free.
-7. **NEVER Create More Than One File Per Role:** Exactly one file per canonical role. No duplicate, fragmented, or mixed naming conventions.
+7. **NEVER Create Arbitrary or Fragmented Files per Role (Strict Role Segregation & Permitted Multi-File Invariants):**
+   - **Canonical Rule Segregation:** Exactly one file per canonical role by default. No duplicate, fragmented, or mixed naming conventions.
+   - **Permitted Invariant A — Dedicated Outbound Adapters per Implementation (`infrastructure/adapters/`):**
+     - When an outbound port (`infrastructure/ports/{f}.repository.port.[ext]` or `{f}.port.[ext]`) has multiple distinct concrete implementations (e.g. in-memory test adapter, SQL database adapter, Kafka event streaming adapter, Redis cache adapter), **each distinct adapter implementation MUST be separated into its own dedicated file**.
+     - All adapters share and fulfill the exact same port contract.
+     - Canonical layout:
+       ```
+       infrastructure/
+       ├── ports/
+       │   └── {f}.repository.port.[ext]             # (10) Abstract outbound port contract
+       └── adapters/
+           ├── {f}.memory.repository.adapter.[ext]    # (11) In-memory / mock adapter
+           ├── {f}.postgres.repository.adapter.[ext]  # (11) Database persistence adapter
+           └── {f}.kafka.downstream.adapter.[ext]     # (11) Event streaming adapter
+       ```
+   - **Permitted Invariant B — Specialized Sub-Services & Sub-Rules per Bounded Domain Responsibility (`service/`, `domain/rules/`):**
+     - When a complex feature encapsulates multiple distinct sub-domain responsibilities (e.g., an `auth` feature managing authentication, authorization, tokens, MFA, sessions, and audits), the business logic MUST be divided into specialized sub-services and corresponding sub-rules rather than condensed into a monolithic file.
+     - Canonical layout:
+       ```
+       service/
+       ├── identity.service.[ext]
+       ├── authentication.service.[ext]
+       ├── authorization.service.[ext]
+       ├── token.service.[ext]
+       ├── session.service.[ext]
+       ├── role.service.[ext]
+       ├── permission.service.[ext]
+       ├── oauth.service.[ext]
+       ├── mfa.service.[ext]
+       ├── verification.service.[ext]
+       ├── password_reset.service.[ext]
+       ├── api_key.service.[ext]
+       └── audit.service.[ext]
+       ```
+     - The same modular separation applies symmetrically to `domain/rules/` (e.g., `token.rules.[ext]`, `mfa.rules.[ext]`, `authorization.rules.[ext]`).
 8. **NEVER Bypass Middleware or Drop W3C Trace Context:**
    - Ingress MUST use `TraceMiddleware` (`src/shared/middleware/`) to extract or initialize W3C `traceparent` (`traceId: X`).
    - Every downstream layer (`service`, `rules`, `machine`, `workflow`, `adapters`) MUST spawn a child span preserving the exact same `traceId`.
@@ -40,6 +74,7 @@ These are non-negotiable negative constraints and architectural invariants. Syst
    - Every execution boundary (`handler`, `service`, `rules`, `machine`, `workflow`, `adapters`, `controller`) MUST wrap logic in structured `try / catch`.
    - All caught errors MUST be recorded on the active span (`span.record_exception(err)` and `span.set_status(Status.ERROR)`).
    - Raw stack traces, database exceptions, or secrets must NEVER leak to the caller. Errors must be mapped to typed `Result.err()` and RFC envelopes.
+
 10. **NEVER Create Arbitrary or Auxiliary Files (Closed File Set Invariant):**
     - After scaffolding canonical files, NO auxiliary, helper, or temporary utility files may ever be created.
     - Features must strictly adhere to the closed canonical set: Backend `(01)`–`(14)` and Frontend `(01)`–`(06)`. Any deviation is strictly prohibited.
