@@ -65,6 +65,49 @@ These are non-negotiable negative constraints and architectural invariants. Syst
        └── audit.service.[ext]
        ```
      - The same modular separation applies symmetrically to `domain/rules/` (e.g., `token.rules.[ext]`, `mfa.rules.[ext]`, `authorization.rules.[ext]`).
+   - **Permitted Invariant C — Multi-Ingress Protocol & Transport Segregation (`api/` / Inbound Ports):**
+     - When a single feature receives ingress from multiple distinct communication protocols (e.g., HTTP REST, Kafka/broker event streaming consumer, gRPC RPCs), **handlers and routers MUST be separated into dedicated protocol-specific files**.
+     - Example layout:
+       ```
+       api/
+       ├── rest/v1/
+       │   ├── routers/{f}.router.[ext]              # (01) HTTP REST router
+       │   └── handlers/{f}.handler.[ext]             # (02) HTTP REST handler
+       ├── events/v1/
+       │   └── handlers/{f}.event.handler.[ext]       # (02) Kafka / message broker event consumer handler
+       └── grpc/v1/
+           └── handlers/{f}.grpc.handler.[ext]        # (02) gRPC RPC service handler
+       ```
+   - **Permitted Invariant D — Multi-Target Query Segregation (`infrastructure/queries/`):**
+     - When a feature leverages polyglot persistence or distinct storage paradigms (e.g. relational SQL, vector similarity engines, cache key conventions / Lua scripts), **queries MUST be separated by target storage engine**.
+     - Example layout:
+       ```
+       infrastructure/queries/
+       ├── {f}.sql.queries.[ext]                      # (12) Parameterized SQL FLOW_* queries
+       ├── {f}.vector.queries.[ext]                   # (12) Vector distance, payload filter & threshold expressions
+       └── {f}.cache.queries.[ext]                    # (12) Valkey / Redis key conventions & Lua scripts
+       ```
+   - **Permitted Invariant E — Specialized Workflow & Automation DAG Segregation (`domain/workflows/`):**
+     - When a feature orchestrates multiple distinct, multi-step asynchronous lifecycle or automation processes (e.g. standard document ingestion, historical reindexing/backfill, soft-deletion purge), **each distinct automation DAG MUST reside in its own dedicated workflow file**.
+     - Example layout:
+       ```
+       domain/workflows/
+       ├── {f}.ingest.workflow.[ext]                  # (09) Ingestion DAG: Parse -> Embed -> Index
+       ├── {f}.reindex.workflow.[ext]                 # (09) Historical backfill & batch re-embedding DAG
+       └── {f}.purge.workflow.[ext]                   # (09) GDPR / cascading deletion scrubber DAG
+       ```
+   - **Permitted Invariant F — Test Category Segregation (`tests/`):**
+     - Features MUST maintain segregated test files according to testing pyramid boundaries rather than bundling all test types into a single monolithic file.
+     - Example layout:
+       ```
+       tests/
+       ├── {f}.rules.test.[ext]                       # (14) Pure business logic decision table tests
+       ├── {f}.machine.test.[ext]                     # (14) State machine transition & guard tests
+       ├── {f}.workflow.test.[ext]                    # (14) Workflow DAG step execution tests
+       ├── {f}.integration.test.[ext]                 # (14) Real infrastructure adapter integration tests
+       └── {f}.schema.test.[ext]                      # (14) Schema contract validation & fuzzing tests
+       ```
+
 8. **NEVER Bypass Middleware or Drop W3C Trace Context:**
    - Ingress MUST use `TraceMiddleware` (`src/shared/middleware/`) to extract or initialize W3C `traceparent` (`traceId: X`).
    - Every downstream layer (`service`, `rules`, `machine`, `workflow`, `adapters`) MUST spawn a child span preserving the exact same `traceId`.
