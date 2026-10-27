@@ -40,6 +40,14 @@ enforcement: "Strict & Non-Negotiable"
     - **OpenTelemetry (OTel):** Strict adherence to OpenTelemetry semantic conventions across all traces, metrics, and logs. Mandatory W3C Trace Context (`traceparent`, `tracestate`) injection and extraction across all network boundaries (HTTP headers, gRPC metadata, Kafka record headers) ensuring unbroken end-to-end distributed trace correlation in any standard APM (Jaeger, Datadog, Grafana Tempo, SigNoz, New Relic).
     - **Kafka & Event Streaming Open Standards:** All event payloads MUST follow standard open event specifications (e.g. CloudEvents 1.0) with standardized record headers (`ce-id`, `ce-source`, `ce-type`, `ce-specversion`, `traceparent`), contract schema validation via Schema Registry, deterministic partition keys, and idempotent consumer/producer guarantees.
     - **Vendor-Neutral Open Protocols:** All external and internal communication MUST be defined via open standards (OpenAPI 3.1+, AsyncAPI 2.6+, gRPC/Protobuf) rather than proprietary or custom wire formats.
+12. **Permitted Multi-File Invariants & Granular Role Segregation:** Exactly one file per canonical role by default, with six explicit permitted architectural exceptions:
+    - **Permitted Invariant A (Dedicated Outbound Adapters):** Distinct adapter files per implementation target (`{f}.memory.adapter.[ext]`, `{f}.postgres.adapter.[ext]`, `{f}.kafka.adapter.[ext]`).
+    - **Permitted Invariant B (Domain Sub-Services & Sub-Rules):** Divided sub-services/sub-rules per bounded responsibility for complex/composite features.
+    - **Permitted Invariant C (Multi-Ingress Protocol Segregation):** Segregated delivery handlers for REST (`{f}.rest.handler`), Kafka event consumers (`{f}.event.handler`), and gRPC (`{f}.grpc.handler`).
+    - **Permitted Invariant D (Multi-Target Query Segregation):** Storage-engine segregated query files (SQL, Vector, Cache).
+    - **Permitted Invariant E (Specialized Automation Workflows):** Distinct workflow DAG files per automation lifecycle (`{f}.ingest.workflow`, `{f}.reindex.workflow`).
+    - **Permitted Invariant F (Test Category Segregation):** Pyramid-segregated test files (rules, machine, workflow, integration, schema).
+
 
 ---
 

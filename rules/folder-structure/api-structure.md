@@ -45,6 +45,14 @@ enforcement: "Strict & Non-Negotiable"
     - **OpenTelemetry (OTel):** Strict adherence to OpenTelemetry semantic conventions across all traces, metrics, and logs. Mandatory W3C Trace Context (`traceparent`, `tracestate`) injection and extraction across all network boundaries (HTTP, gRPC, Kafka).
     - **Kafka & Event Streaming Open Standards:** All event payloads MUST follow standard open event specifications (e.g. CloudEvents 1.0) with standardized record headers (`ce-id`, `ce-source`, `ce-type`, `ce-specversion`, `traceparent`), contract schema validation via Schema Registry, deterministic partition keys, and idempotent consumer/producer semantics.
     - **Vendor-Neutral Open Protocols:** All delivery and service interfaces MUST use open standards (OpenAPI 3.1+, AsyncAPI 2.6+, gRPC/Protobuf) rather than proprietary or custom wire formats.
+12. **Permitted Multi-File Invariants (Rule 1 Alignment):** While adhering to the canonical closed role hierarchy, features permit segregated files under explicit architectural criteria:
+    - Dedicated adapter files per distinct technology/implementation (`{f}.{target}.adapter.[ext]`).
+    - Dedicated sub-services and sub-rules per domain responsibility for composite features.
+    - Dedicated protocol ingress handlers (`rest`, `event`, `grpc`).
+    - Multi-target query segregation (SQL, Vector, Cache).
+    - Dedicated workflow DAG files per distinct automation lifecycle.
+    - Pyramid-segregated test files (rules, machine, workflow, integration, schema).
+
 
 ---
 
@@ -312,7 +320,9 @@ The complete structural reference tree for all polyglot sub-packages and 10-role
 │   │       │   ├── ports/
 │   │       │   │   └── {feature}.repository.port.[ext]
 │   │       │   ├── adapters/
-│   │       │   │   └── {feature}.repository.adapter.[ext]
+│   │       │   │   ├── {feature}.memory.adapter.[ext] # Permitted Invariant A: Separate files per implementation
+│   │       │   │   ├── {feature}.postgres.adapter.[ext]
+│   │       │   │   └── {feature}.kafka.adapter.[ext]
 │   │       │   └── queries/
 │   │       │       ├── .gitkeep
 │   │       │       └── {feature}.queries.[ext|sql]

@@ -35,6 +35,10 @@ enforcement: "Strict & Non-Negotiable"
 4. **Zero-Inline-Comment Doctrine & Top-Level End-to-End Algorithm Blueprint:** In all implementation code, NEVER write inline comments, mid-function comments, or scattered annotations inside functions, handlers, or loops. The code body must remain 100% comment-free, self-describing, and pure. All algorithmic workflows, request validation steps, security checks, and failure handling MUST be exhaustively documented ONCE at the top of the file in a standardized header/docblock.
 5. **PII & Credential Shielding:** Passwords, API secret keys, session tokens, internal hostnames, database table names, and raw stack traces must NEVER be exposed in response bodies, logs, or error metadata.
 6. **Zero-Deletion Preservation Rule:** Existing specifications, changelogs, and strict invariants must never be pruned, weakened, or removed.
+7. **Permitted Multi-File & Multi-Protocol Invariants Alignment:** Ingress request handlers and downstream delivery adapters must adhere to the multi-file invariants of `1-feature-folder-writing-rule.md`:
+   - Segregate handlers by transport protocol (`rest`, `event`, `grpc`) under `src/api/` while keeping payload models and envelope wrappers (`meta`, `data`, `errors`) strictly compliant with this specification.
+   - Separate outbound adapters per target implementation (`infrastructure/adapters/{f}.{target}.adapter.[ext]`) so that transport serialization, caching, and resiliency pipelines stay decoupled.
+
 
 ---
 

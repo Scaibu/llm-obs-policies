@@ -43,6 +43,16 @@ Never write mid-function inline comments inside function bodies across any layer
 Guardrail 9: Pure CLI Scaffolding Invariant (Zero REST API for Scaffolding)
 Never invoke, expose, or rely on HTTP/REST APIs for creating directories, scaffolding sub-packages, or synchronizing workspace knowledge graphs. All package creation, file scaffolding, and workspace scanning must be executed strictly via local CLI subcommands (`scaffold-package`, `graph-scan`) or direct domain services.
 
+Guardrail 10: Granular Role Segregation & Permitted Multi-File Invariants (Rule 1 Alignment)
+Features within `src/features/{feature}/` must strictly adhere to the canonical closed file set while respecting the Permitted Invariants defined in `1-feature-folder-writing-rule.md`:
+- Permitted Invariant A: Separate adapter files per distinct target implementation under `infrastructure/adapters/` (e.g. Memory, Postgres, Kafka).
+- Permitted Invariant B: Separate sub-service and sub-rule files per domain sub-role under `service/` and `domain/rules/`.
+- Permitted Invariant C: Separate protocol handlers under `api/` (REST, Kafka events, gRPC).
+- Permitted Invariant D: Separate query files by storage paradigm under `infrastructure/queries/` (SQL, Vector, Cache).
+- Permitted Invariant E: Separate workflow DAG files per distinct process under `domain/workflows/`.
+- Permitted Invariant F: Separate test files by pyramid tier under `tests/` (rules, machine, workflow, integration, schema).
+
+
 ---
 
 ## 1. Mandatory Sequential Package Scaffolding Order
@@ -80,9 +90,10 @@ Multi-target polyglot infrastructure deployment and release specifications:
 Application core source code:
 - src/main.[ext] (Root application bootstrap, DI wiring, and server runner adhering strictly to 07-main-file.md 9-phase lifecycle)
 - src/api/ (Delivery ingress and contract specifications: contracts/, rest/v1/, graphql/v1/, grpc/v1/, events/)
-- src/features/{feature-name}/ (Hexagonal domain feature modules: contracts/, domain/, infrastructure/, service/, tests/)
+- src/features/{feature-name}/ (Hexagonal domain feature modules adhering to `1-feature-folder-writing-rule.md`: contracts/, domain/, infrastructure/, service/, tests/. Permitted Invariants A-F allow dedicated files for multiple adapter implementations, sub-services, polyglot queries, distinct workflows, and test categories)
 - src/infra/ (Centralized infrastructure adapters: config/, clients/, observability/)
 - src/shared/ (Pure reusable utilities with zero IO and zero business logic: constants/, utils/, errors/, types/)
+
 
 5. scripts/
 Operational and lifecycle runner automation:
