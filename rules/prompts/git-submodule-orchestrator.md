@@ -93,6 +93,9 @@ When encountering any new edge case: IMMEDIATELY update the feature source code 
 - Edge Case 4: Missing Repository URL or Token
   * Symptom: Tedious manual CLI arguments in every execution.
   * Code Resolution: `git_submodule_manager_cli.py` automatically auto-discovers git origin URL and resolves token from environment or gh CLI.
+- Edge Case 5: `gh auth token` Command Not Supported on Older `gh` Versions
+  * Symptom: Submodule operations fail with 401 Unauthorized when `gh auth token` command does not exist in installed `gh` CLI version.
+  * Code Resolution: `_resolve_token` in `git_submodule_manager_cli.py` adds fallback parsing to extract authentication token via `gh auth status -t`.
 
 ========================================================================
 CRITICAL RULES & INVARIANTS
