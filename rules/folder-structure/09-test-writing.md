@@ -1,471 +1,305 @@
 ---
-agent_role: "Distributed Systems Quality & Test Engineering Compliance Enforcer"
-trigger: "ON_REFERENCE | ON_CONTEXT_LOAD | ON_TEST_CREATION | ON_VERIFICATION"
-scope: "Unit Tests, Integration Tests, End-to-End Tests, Scenario Tests, Performance/Benchmark Tests, Load Tests, Production & Real Infrastructure Verification"
-mode: "Strict"
-contract_version: "2.1"
-enforcement: "Absolute & Non-Negotiable"
+agent_role: "Universal Test Quality & Polyglot Verification Enforcer"
+trigger: "ON_REFERENCE | ON_CONTEXT_LOAD | ON_TEST_CREATION | ON_VERIFICATION | ON_PR_AUDIT"
+scope: "Language-Agnostic Backend Test Standards (Go, Python, TypeScript, Rust, Java, C#)"
+mode: "Maximum Strictness"
+contract_version: "3.0"
+enforcement: "Absolute, Automated & Non-Negotiable"
 ---
 
-# Production Testing & Infrastructure Verification Specification (`rules/folder-structure/09-test-writing.md`)
+# Universal Polyglot Testing & Real-Infrastructure Verification Contract (`rules/folder-structure/09-test-writing.md`)
 
-> **Architectural Separation Principle:**  
-> Synthetic in-memory mocks give developers a false sense of security while hiding the real failure modes of distributed systems (network partitions, connection pool exhaustion, transaction deadlocks, SSRF guards, and CAS race conditions).
+> **Architectural Separation & Real-World Invariant:**  
+> Synthetic in-memory mocks create an illusion of correctness while disguising catastrophic production failure modes: network partitions, SQL check constraint violations, connection pool exhaustion, transaction deadlocks, SSRF security guards, and Compare-And-Swap (CAS) race conditions.
 > 
-> Testing MUST be performed like a seasoned human engineer operating on real infrastructure, NOT an AI generating superficial mock unit tests:
-> - **Unit Tests (`*.unit_test.go`):** Pure deterministic domain rules, state machine transitions, input schemas, and cryptographic hash computations. Offline, zero network, zero I/O, sub-millisecond execution.
-> - **Integration Tests (`*.integration_test.go`):** Verified interactions across database adapters, schema migrations, and real repository layers using transactional isolation.
-> - **End-to-End Tests (`*.e2e_test.go`):** In-process lifecycle verification connecting controllers, services, database engines, and dispatchers across full execution graphs.
-> - **Scenario & Edge Case Tests (`*.scenario_test.go`, `*.edgecases_test.go`):** Deliberate adversarial injections: poisoned payloads, malformed JSON, network timeouts, duplicate event replays, and split-brain lease acquisitions.
-> - **Performance & Benchmark Tests (`*.performance_test.go`):** High-throughput micro-benchmarks enforcing allocation quotas (`-benchmem`), zero GC thrashing in hot loops, and nanosecond latency budgets.
-> - **Real Infrastructure Verification (`scripts/test/test.real.sh`):** Fully automated, self-contained shell verification launching production binaries against live PostgreSQL clusters and mock downstream services via HTTP/cURL, asserting wire-level semantics and physical database states with strict process trap teardown.
-> - **Load & Concurrency Tests (`scripts/test/test.load.sh`):** High-concurrency stress testing pushing connection pools, lease pollers, and fencing tokens to saturation to verify stability, dead-letter capture, and absence of data corruption.
+> Testing MUST be performed like a seasoned human distributed-systems engineer operating against real infrastructure, NOT an AI generating superficial mock unit tests. This contract is strictly **language-agnostic** and applies universally across all runtimes (Go, Python, TypeScript/Node, Rust, Java).
 
 ---
 
 # PART I: STRICT GUARDRAILS (WHAT NOT TO DO AT ALL)
 
-0. **STRICT NON-ASSUMPTION & REAL INFRASTRUCTURE INVARIANT**:
-   - Strictly never assume that code that passes unit tests will function in production.
-   - Always verify that real database check constraints, unique indexes, foreign keys, regex patterns, and network SSRF filters allow the test payloads.
-   - Strictly never create synthetic mocks that bypass production validation rules.
+0. **STRICT REAL-WORLD INFRASTRUCTURE & ZERO-SYNTHETIC-ILLUSION INVARIANT**:
+   - Strictly never assume code that passes in-memory unit tests will survive in production.
+   - Every system feature interacting with persistence, networking, or concurrency MUST be verified against real backing services (PostgreSQL, Kafka, Redis, HTTP wire protocols) enforcing physical database constraints, regex validations, network isolation, and thread safety.
+   - Strictly never write synthetic mock adapters that bypass real production validation rules or foreign key relationships.
 
 These are non-negotiable negative constraints and architectural invariants. Systems, AI agents, and engineers MUST review these first before writing or running tests:
 
-1. **NEVER Rely Exclusively on In-Memory Mocks:** Mocking everything obscures SQL syntax errors, type mismatches (e.g., UUID vs string), unique constraint violations, and transaction isolation anomalies. Every feature MUST have tests running against real PostgreSQL storage.
-2. **NEVER Use Bare `sleep` for Asynchronous State Verification:** Distributed sagas and background pollers execute asynchronously. Using `sleep 2` or `sleep 5` creates flaky pipelines under CPU pressure and wastes CI runtime. All asynchronous assertions MUST poll using bounded retry loops with exponential backoff against the database or status API.
-3. **NEVER Leave Orphaned Background Processes:** Test scripts that launch servers, proxies, or background daemons MUST trap all exit signals (`trap cleanup EXIT INT TERM ERR`) to kill child processes and delete temporary directories. Never leave ports locked after a test run fails.
-4. **NEVER Hardcode Hostnames, Ports, or Credentials:** Test scripts and suites must read configuration from 12-factor environment variables (`PORT`, `ADMIN_PORT`, `MOCK_PORT`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`) with non-conflicting default values. Never assume port 8080 or 5432 is free.
-5. **NEVER Bypass Production Security Controls in Tests:** Do not disable loopback/SSRF validators, authentication middleware, or fencing checks just to make a test pass. Tests must conform to real security policies (e.g., resolving a real hostname like `$(hostname)` rather than using blocked `127.0.0.1` when SSRF guards are active).
-6. **NEVER Test Only the Happy Path:** Human engineers test what breaks. Tests must deliberately verify pre-pivot failure compensation, post-pivot retry policies, stale CAS version conflicts (HTTP 409), invalid input payloads (HTTP 400), cancellation mid-flight, and database failover.
-7. **NEVER Share Unisolated State Across Test Runs:** Tests running concurrently must never mutate the same entity without isolation. Workflows and sagas must generate dynamic, unique IDs, timestamps, or tenant boundaries (`default_${RANDOM}`) to prevent foreign key and unique index collisions.
-8. **NEVER Ship Unbenchmarked Critical Paths:** State machine transition loops, DAG topological sorters, and idempotency key derivations must have automated benchmarks verifying memory allocations (`0 allocs/op` or strictly bounded byte quotas).
-9. **NEVER Ignore Clean Database Rollbacks and Cleanup:** Integration tests that populate database tables must either run within rolled-back transactions or cleanly truncate/partition test tables to ensure idempotency when executed repeatedly on developer machines.
-10. **NEVER Conflate Unit Tests with Integration Tests:** Unit tests must run without external dependencies and complete in under 5 seconds for the entire repository. Slow network/database tests must be partitioned behind build tags (`//go:build integration`) or dedicated test scripts.
+1. **NEVER Substitute In-Memory Stubs for Database Integration Tests:** Mocking database drivers hides SQL syntax errors, data type mismatches (e.g. UUID vs string), foreign key cascades, unique index collisions, and transaction deadlocks. All data persistence layers MUST be tested against real, running relational/NoSQL databases.
+2. **NEVER Use Arbitrary `sleep` Calls for Asynchronous State Verification:** Distributed transactions, sagas, message queues, and background pollers execute asynchronously. Hardcoded sleep intervals (`sleep(2)`, `time.Sleep(...)`, `setTimeout`) create flaky test suites under CI resource throttling and waste pipeline runtime. Every asynchronous assertion MUST poll using deterministic retry predicates with bounded timeouts and exponential backoff against the real state store or status endpoint.
+3. **NEVER Leave Orphaned Background Processes or Dangling Sockets:** Any test script, harness, or test runner that launches background processes (daemons, mock HTTP servers, proxies, port forwarders) MUST register explicit signal traps (`trap cleanup EXIT INT TERM ERR`) to guarantee 100% of child processes are reaped and temporary directories are unlinked upon exit or abort.
+4. **NEVER Hardcode Hostnames, Ports, File Paths, or Secrets:** Tests must read configuration exclusively from 12-factor environment variables (`PORT`, `ADMIN_PORT`, `MOCK_PORT`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSLMODE`) with non-conflicting fallback defaults. Never assume port `8080`, `5432`, or `6379` is unoccupied.
+5. **NEVER Bypass Production Security Boundaries in Test Mode:** Never disable Server-Side Request Forgery (SSRF) filters, IP loopback validators, authentication headers, or version fencing to force a test to pass. Tests must fulfill the exact production security rules (e.g. resolving a valid non-loopback DNS hostname instead of injecting blocked `127.0.0.1` when loopback addresses are prohibited).
+6. **NEVER Write Only Happy-Path Tests:** A test suite that only verifies successful execution is incomplete and non-compliant. Tests must systematically simulate and assert:
+   - Pre-pivot business failures and reverse compensation execution.
+   - Network timeouts, TCP connection resets, and DNS resolution failures.
+   - Stale Compare-And-Swap (CAS) version concurrency conflicts (HTTP 409 Conflict).
+   - Poisoned inputs, boundary violations, and malformed payloads (HTTP 400 Bad Request).
+   - Mid-flight cancellation and graceful draining of unstarted stages.
+7. **NEVER Bleed State Across Tests (Mandatory State Isolation):** Tests running concurrently or sequentially must never mutate shared entities without cryptographic or tenant-level isolation. Every test run must generate globally unique identifiers (UUIDs, tenant suffixes, prefixed names) so that tests remain completely idempotent and safe to run in parallel.
+8. **NEVER Ship Unbenchmarked Hot Paths or Critical Loops:** State transition evaluation, DAG topological sorting, serialization/deserialization, and idempotency key derivations must have automated benchmark tests measuring latency percentiles and memory allocation quotas to catch memory leaks and GC thrashing.
+9. **NEVER Conflate Unit Tests with Integration Tests:** Pure unit tests must execute completely offline with zero file I/O, zero network calls, and sub-millisecond execution times. Tests requiring external daemons, containers, or network sockets must be isolated into integration or real test suites.
+10. **NEVER Deploy Without a Self-Contained CLI Test Runner:** Developers and CI systems must not be expected to manually invoke multi-step ad-hoc cURL commands or run setup scripts by hand. The system MUST provide automated, self-contained shell scripts (`scripts/test/test.real.sh`, `test.load.sh`) that orchestrate the entire lifecycle: build, launch, probe readiness, execute assertions, verify state, and tear down cleanly.
 
 ---
 
-# PART II: THE TEST TAXONOMY & DIRECTORY HIERARCHY
+# PART II: UNIVERSAL TEST TAXONOMY & POLYGLOT NAMING MATRIX
 
-Every feature within `src/features/<feature-name>/` and the project root MUST implement tests adhering to this exact directory structure:
+All tests live within the feature's dedicated `tests/` directory and under the project root `scripts/test/`. The structure is strictly uniform across all programming languages:
 
 ```
-distributed-transaction-engine/
+<project-root>/
 ├── scripts/
 │   └── test/
-│       ├── test.unit.sh          # Executes pure unit test suite across all features
-│       ├── test.integration.sh   # Executes integration tests against database
-│       ├── test.e2e.sh           # Executes E2E regression and benchmark suite
-│       ├── test.real.sh          # Full automated live host verification with mock services
-│       └── test.load.sh          # High-concurrency load and stress test harness
+│       ├── test.unit.sh          # Executes Tier 0 unit tests across all features
+│       ├── test.integration.sh   # Boots dependencies and executes Tier 1 integration tests
+│       ├── test.e2e.sh           # Executes Tier 2 in-process E2E regression suite
+│       ├── test.real.sh          # Full automated live host verification against real daemons
+│       └── test.load.sh          # High-concurrency load and saturation test harness
 └── src/
     └── features/
         └── <feature-name>/
             └── tests/
-                ├── <feature>.rules_test.go        # Pure unit tests (business invariants)
-                ├── <feature>.schema_test.go       # Input validation & regex checks
-                ├── <feature>.integration_test.go  # Database adapter & persistence tests
-                ├── <feature>.e2e_test.go          # Feature-level end-to-end flows
-                ├── <feature>.scenario_test.go     # Multi-step business scenarios
-                ├── <feature>.edgecases_test.go    # Boundary conditions & adversarial inputs
-                └── <feature>.performance_test.go  # Benchmark tests & allocation budgets
+                ├── <feature>.rules.test.[ext]        # Tier 0: Pure domain rules & invariants
+                ├── <feature>.schema.test.[ext]       # Tier 0: Schema validation & boundary checks
+                ├── <feature>.integration.test.[ext]  # Tier 1: Real database adapter verification
+                ├── <feature>.e2e.test.[ext]          # Tier 2: In-process full lifecycle flows
+                ├── <feature>.scenario.test.[ext]     # Tier 3: Complex multi-step journeys
+                ├── <feature>.edgecases.test.[ext]    # Tier 3: Adversarial inputs & edge conditions
+                └── <feature>.performance.test.[ext]  # Tier 4: Latency & memory allocation budgets
 ```
 
-### Test Classification Matrix
+### Polyglot Extension & Runner Mapping Matrix
 
-| Test Type | Target Scope | External Dependencies | Execution Speed | Execution Frequency | Primary Command |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Unit** | Functions, domain rules, schemas | None (Pure offline) | < 1 ms / test | Pre-commit / every save | `go test -v ./src/features/... -run "Rules\|Schema"` |
-| **Performance** | Hot execution loops, DAG sorting | None | 1-5 s / suite | Daily / Pre-release | `go test -bench=. -benchmem ./src/...` |
-| **Integration** | DB adapters, queries, migrations | PostgreSQL instance | 50-200 ms / test | Pre-push / CI build | `./scripts/test/test.integration.sh` |
-| **E2E (Code)** | Controllers -> Services -> Repos | In-memory / Mock DB | 100-500 ms / test | CI PR verification | `./scripts/test/test.e2e.sh` |
-| **Scenario** | Multi-step saga compensation flows | Real / Mock Repos | 100-500 ms / test | CI PR verification | `go test -v -run "Scenario"` |
-| **Edge Cases** | Timeouts, poisoned input, CAS race | In-memory / Real DB | 50-200 ms / test | CI PR verification | `go test -v -run "Edgecases"` |
-| **Real Infra** | Compiled binary, HTTP API, DB, Mocks | Real Postgres, Network, Curl | 5-15 s total | CI Pipeline & Release Gate | `./scripts/test/test.real.sh` |
-| **Load Test** | Concurrent worker pools, API stress | Live Service Cluster | 30-120 s total | Nightly / Pre-production | `./scripts/test/test.load.sh` |
+| Language | Test Extension `.[ext]` | Unit Test Runner | Integration Runner | Benchmark Runner |
+| :--- | :--- | :--- | :--- | :--- |
+| **Go** | `_test.go` | `go test -v -race` | `go test -tags=integration` | `go test -bench=. -benchmem` |
+| **Python** | `_test.py` or `test_*.py` | `pytest -m "unit"` | `pytest -m "integration"` | `pytest-benchmark` |
+| **TypeScript / Node** | `.test.ts` or `.spec.ts` | `vitest run --unit` / `jest` | `vitest run --integration` | `mitata` / `tinybench` |
+| **Rust** | `_test.rs` / `tests/*.rs` | `cargo test --lib` | `cargo test --test integration` | `cargo bench` / `criterion` |
+| **Java** | `Test.java` | `mvn test -Dtest=*UnitTest` | `mvn verify -Pintegration` | `jmh` (Java Microbenchmark) |
 
 ---
 
-# PART III: DETAILED SPECIFICATIONS BY TEST TYPE
+# PART III: TIER-BY-TIER TEST SPECIFICATIONS
 
-## 1. Unit Tests (`*.rules_test.go`, `*.schema_test.go`)
+## Tier 0: Pure Unit Tests (`*.rules.test.[ext]`, `*.schema.test.[ext]`)
 
-### Purpose & Requirements
-- Enforce business logic correctness, state machine mathematical properties, and input contract adherence.
-- **Zero I/O:** Must never open files, network sockets, or database handles.
-- **Table-Driven Design:** All test cases must use table-driven slices with explicit names, input payloads, expected outcomes, and expected error codes.
+### Mandatory Characteristics
+- **Execution Speed:** Must execute in under **1 millisecond** per test case.
+- **Environment:** 100% offline. Zero socket connections, zero disk I/O, zero database drivers.
+- **Pattern:** Strictly table-driven. Every test must define an array/slice of structured test cases declaring:
+  1. Test scenario name.
+  2. Input data structure.
+  3. Expected boolean outcome (`valid` vs `invalid`).
+  4. Expected error code / canonical error string on failure.
 
-### Canonical Pattern
-```go
-package tests
-
-import (
-	"testing"
-	"distributed-transaction-engine/src/features/workflow-definitions/contracts"
-)
-
-func TestWorkflowSchemaValidation(t *testing.T) {
-	testCases := []struct {
-		name          string
-		input         contracts.CreateWorkflowDefinitionInput
-		expectValid   bool
-		expectedError string
-	}{
-		{
-			name: "valid workflow definition",
-			input: contracts.CreateWorkflowDefinitionInput{
-				TenantID:      "default",
-				Name:          "payment_flow",
-				Version:       1,
-				Source:        "web_console",
-				ExternalID:    "ext_123",
-				CorrelationID: "11111111-2222-3333-4444-555555555555",
-				Steps: []contracts.StepDefinition{
-					{
-						StepID:             "charge_card",
-						StepName:           "Charge Credit Card",
-						IsPivot:            true,
-						ActionType:         "HTTP",
-						ActionEndpoint:     "https://api.payments.internal/charge",
-						TimeoutSeconds:     10,
-						MaxRetries:         3,
-						Dependencies:       []string{},
-					},
-				},
-			},
-			expectValid: true,
-		},
-		{
-			name: "reject empty externalId",
-			input: contracts.CreateWorkflowDefinitionInput{
-				TenantID:      "default",
-				Name:          "payment_flow",
-				Version:       1,
-				Source:        "web_console",
-				ExternalID:    "",
-				CorrelationID: "11111111-2222-3333-4444-555555555555",
-				Steps:         []contracts.StepDefinition{},
-			},
-			expectValid:   false,
-			expectedError: "externalId cannot be empty",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := contracts.ValidateCreateWorkflowDefinitionInput(tc.input)
-			if tc.expectValid && err != nil {
-				t.Fatalf("expected valid input but got error: %v", err)
-			}
-			if !tc.expectValid {
-				if err == nil {
-					t.Fatalf("expected validation error but got nil")
-				}
-				if err.Error() != tc.expectedError {
-					t.Fatalf("expected error '%s', got '%s'", tc.expectedError, err.Error())
-				}
-			}
-		})
-	}
-}
-```
+### Strict Coverage Mandate
+- Boundary value testing: zero values, empty strings, maximum length strings, Unicode special characters, boundary integers (0, 1, max int, negative numbers).
+- Regular expression verification: public IDs (e.g. `^sga_[0-9a-zA-Z]{26}$`), entity names, version formats.
+- Deterministic state machine transition tables: every state $S$ receiving event $E$ must deterministically transition to expected state $S'$ or emit a strict `ConflictError`.
 
 ---
 
-## 2. Performance & Benchmark Tests (`*.performance_test.go`)
+## Tier 1: Real Database Integration Tests (`*.integration.test.[ext]`)
 
-### Purpose & Requirements
-- Verify that performance-critical operations (DAG sorting, CAS transitions, hash computations) do not create garbage collection pressure or latency regressions.
-- Must run using `go test -bench=. -benchmem`.
-- Must verify allocations per operation (`b.ReportAllocs()`).
+### Mandatory Characteristics
+- **Target:** Concrete database repository adapters (`infrastructure/adapters/*`).
+- **Storage:** A real, running database instance (e.g., PostgreSQL, MySQL, Redis, DynamoDB local).
+- **Execution Model:** Either executed inside isolated transactions that are rolled back after each test, or executed against unique, freshly-created tenant schemas/partitions.
 
-### Canonical Pattern
-```go
-package tests
-
-import (
-	"testing"
-	"distributed-transaction-engine/src/features/workflow-definitions/contracts"
-)
-
-func BenchmarkDAGTopologyValidation(b *testing.B) {
-	steps := make([]contracts.StepDefinition, 20)
-	for i := 0; i < 20; i++ {
-		var deps []string
-		if i > 0 {
-			deps = []string{steps[i-1].StepID}
-		}
-		steps[i] = contracts.StepDefinition{
-			StepID:         string(rune('a' + i)),
-			StepName:       "Benchmark Step",
-			IsPivot:        i == 19,
-			ActionType:     "HTTP",
-			ActionEndpoint: "https://api.internal/step",
-			Dependencies:   deps,
-		}
-	}
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		_ = contracts.ValidateCreateWorkflowDefinitionInput(contracts.CreateWorkflowDefinitionInput{
-			TenantID:      "default",
-			Name:          "bench_workflow",
-			Version:       1,
-			Source:        "benchmark",
-			ExternalID:    "ext_bench",
-			CorrelationID: "11111111-2222-3333-4444-555555555555",
-			Steps:         steps,
-		})
-	}
-}
-```
+### Strict Verification Mandate
+Every integration test suite MUST verify the following database invariants:
+1. **Physical Check Constraints:** Tests must prove that inserting an invalid value (e.g. a string not matching regex, negative version number, or invalid status enum) triggers a physical SQL constraint violation (e.g. Postgres `23514 check_violation`).
+2. **Foreign Key Integrity:** Tests must prove that inserting an entity referencing a non-existent parent returns a physical foreign key violation (e.g. Postgres `23503 foreign_key_violation`).
+3. **Unique Index & Deduplication:** Tests must prove that inserting duplicate natural keys (e.g. `tenant_id`, `name`, `version`) returns a physical unique violation (e.g. Postgres `23505 unique_violation`).
+4. **Optimistic Locking & Version Fencing:** Tests must execute a Compare-And-Swap update with an outdated version/fencing token and verify that the database update affects **0 rows** and emits a conflict error.
 
 ---
 
-## 3. Integration Tests (`*.integration_test.go`)
+## Tier 2: In-Process End-to-End Tests (`*.e2e.test.[ext]`)
 
-### Purpose & Requirements
-- Test direct interaction with real PostgreSQL adapters and repository implementations.
-- Must verify real schema constraints:
-  - Check constraints (e.g. `public_id ~ '^sga_[0-9a-zA-Z]{26}$'`).
-  - Foreign key constraints (e.g. `fk_saga_instances_workflow`).
-  - Unique keys (e.g. `(tenant_id, name, version)`).
-  - Version fencing and optimistic concurrency locking (`fencing_token`, `expected_version`).
+### Mandatory Characteristics
+- **Target:** Complete service execution graphs connecting API controllers, domain services, outbound ports, and event dispatchers.
+- **Execution Model:** In-memory or locally-wired dependency injection container running within the test process.
 
-### Canonical Pattern
-```go
-package tests
-
-import (
-	"context"
-	"database/sql"
-	"testing"
-	"time"
-
-	"distributed-transaction-engine/src/features/saga-orchestration/contracts"
-	"distributed-transaction-engine/src/features/saga-orchestration/infrastructure/adapters"
-	_ "github.com/lib/pq"
-)
-
-func TestPostgresOptimisticLocking(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
-
-	db, err := sql.Open("postgres", "postgres://postgres:supersecretpgpassword@127.0.0.1:5432/dist_tx_engine?sslmode=disable")
-	if err != nil {
-		t.Fatalf("failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
-	repo := adapters.NewPostgresSagaRepositoryAdapter(db)
-	ctx := context.Background()
-
-	instance := &contracts.SagaInstance{
-		ID:                   "11111111-2222-3333-4444-555555555555",
-		PublicID:             "sga_0123456789abcdef0123456789",
-		TenantID:             "default",
-		WorkflowDefinitionID: "22222222-3333-4444-5555-666666666666",
-		WorkflowVersion:      1,
-		SpecHash:             "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-		Source:               "integration_test",
-		ExternalID:           "ext_test_opt_lock",
-		InputHash:            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
-		CorrelationID:        "33333333-4444-5555-6666-777777777777",
-		CurrentState:         contracts.SagaStateCreated,
-		Version:              1,
-		FencingToken:         0,
-		DeadlineAt:           time.Now().Add(10 * time.Minute),
-	}
-
-	_ = repo.CreateSaga(ctx, instance)
-
-	err = repo.UpdateSagaState(ctx, instance.TenantID, instance.ID, 1, contracts.SagaStateRunning)
-	if err != nil {
-		t.Fatalf("expected version 1 update to succeed, got: %v", err)
-	}
-
-	err = repo.UpdateSagaState(ctx, instance.TenantID, instance.ID, 1, contracts.SagaStateCompleted)
-	if err == nil {
-		t.Fatalf("expected stale version update to fail with CAS conflict, got nil")
-	}
-}
-```
+### Strict Verification Mandate
+1. **Pipeline Execution:** Full verification of end-to-end execution from request receipt to final output.
+2. **Context & Metadata Propagation:** Must assert that `correlationId`, `traceparent`, and `tenantId` are preserved and propagated through every layer of the feature stack.
 
 ---
 
-## 4. Scenario & Edge Case Tests (`*.scenario_test.go`, `*.edgecases_test.go`)
+## Tier 3: Adversarial Scenario & Edge Case Tests (`*.scenario.test.[ext]`, `*.edgecases.test.[ext]`)
 
-### Purpose & Requirements
-- Model complete multi-step transaction journeys:
-  - **Happy Path:** Steps execute in topological order -> pivot executes -> status `COMPLETED`.
-  - **Pre-Pivot Failure:** Step 2 fails -> step 1 reverse compensated -> unstarted steps drained -> status `FAILED_COMPENSATED`.
-  - **Post-Pivot Failure:** Step 2 (pivot) succeeded, step 3 fails -> retry forward indefinitely -> status `STUCK_FORWARD` or operator intervention.
-  - **Saga Cancellation:** Cancel request arrives while step 1 in-flight -> drain unstarted -> compensate executed -> status `CANCELLED`.
-  - **Split-Brain Lease Conflict:** Two workers claim the same saga -> second worker fence rejected via fencing token check.
+### Mandatory Characteristics
+- **Target:** System resilience, failure recovery, and distributed invariants under abnormal conditions.
 
----
-
-## 5. Real Infrastructure Live Verification (`scripts/test/test.real.sh`)
-
-### Purpose & Requirements
-- **Human Engineer Standard:** A real human test script runs outside the Go test runner to verify actual system behavior over standard HTTP networking, using real processes, real curl calls, real database queries, and deterministic process lifecycle management.
-- **Zero Leaks:** Must implement a mandatory `trap cleanup EXIT INT TERM ERR` routine that guarantees all child PIDs (engine binary, mock HTTP downstream servers, temp folders) are terminated and removed.
-- **Readiness Polling:** Must actively probe `http://127.0.0.1:${ADMIN_PORT}/health/ready` until HTTP 200 is confirmed before sending traffic.
-- **Asynchronous DB Convergence:** Must query the actual PostgreSQL database or status API with bounded retries to verify terminal state convergence.
-
-### Architecture Blueprint (`scripts/test/test.real.sh`)
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# 1. Environment & Dynamic Config (12-Factor Compliant)
-PORT="${PORT:-8088}"
-ADMIN_PORT="${ADMIN_PORT:-8089}"
-MOCK_PORT="${MOCK_PORT:-9095}"
-DOWNSTREAM_HOST="${DOWNSTREAM_HOST:-$(hostname)}"
-DB_HOST="${DB_HOST:-127.0.0.1}"
-DB_PORT="${DB_PORT:-5432}"
-DB_USER="${DB_USER:-postgres}"
-DB_PASSWORD="${DB_PASSWORD:-supersecretpgpassword}"
-DB_NAME="${DB_NAME:-dist_tx_engine}"
-DB_SSLMODE="${DB_SSLMODE:-disable}"
-
-TMP_DIR="$(mktemp -d)"
-MOCK_PID=""
-ENGINE_PID=""
-
-# 2. Strict Process Cleanup Trap
-cleanup() {
-    local exit_code=$?
-    if [[ -n "${ENGINE_PID}" ]] && kill -0 "${ENGINE_PID}" 2>/dev/null; then
-        kill -TERM "${ENGINE_PID}" 2>/dev/null || true
-        wait "${ENGINE_PID}" 2>/dev/null || true
-    fi
-    if [[ -n "${MOCK_PID}" ]] && kill -0 "${MOCK_PID}" 2>/dev/null; then
-        kill -TERM "${MOCK_PID}" 2>/dev/null || true
-        wait "${MOCK_PID}" 2>/dev/null || true
-    fi
-    rm -rf "${TMP_DIR}"
-    exit ${exit_code}
-}
-trap cleanup EXIT INT TERM ERR
-
-# 3. Inline Mock Downstream Engine (Python HTTP)
-# Implements endpoints: /reserve, /charge, /compensate, /fail-step, /slow-step
-
-# 4. Build Engine Binary
-go build -o "${TMP_DIR}/engine-bin" ./src/main.go
-
-# 5. Launch Daemon & Poll Deep Readiness
-# Polls http://127.0.0.1:${ADMIN_PORT}/health/ready until HTTP 200
-
-# 6. Execute Scenario Suite via curl:
-# - Scenario 1: Admin probes & Prometheus /metrics verification
-# - Scenario 2: Workflow registration & retrieval
-# - Scenario 3: State machine initialization & CAS version enforcement (HTTP 409)
-# - Scenario 4: Happy path end-to-end saga execution & DB assertion
-# - Scenario 5: Pre-pivot failure & automatic reverse compensation (FAILED_COMPENSATED)
-# - Scenario 6: In-flight saga cancellation (CANCELLED)
-```
+### Strict Verification Scenarios (Mandatory for Every Feature)
+1. **Pre-Pivot Failure & Reverse Compensation:**
+   - Execute a multi-step saga where an early step fails.
+   - Assert that completed preceding steps are compensated in reverse topological order.
+   - Assert that unstarted forward steps are cancelled/drained.
+   - Assert that terminal state reaches `FAILED_COMPENSATED`.
+2. **Post-Pivot Failure Invariant (Point of No Return):**
+   - Execute a saga where the pivot step succeeds, but a post-pivot step fails.
+   - Assert that reverse compensation is **STRICTLY BLOCKED** (money was charged / inventory committed).
+   - Assert that the engine enters forward retry or enters a stuck state awaiting human operator intervention.
+3. **Mid-Flight Cancellation:**
+   - Trigger a cancellation event while forward steps are running.
+   - Assert that running steps complete or cancel, unstarted steps are drained, executed steps are compensated, and final state is `CANCELLED`.
+4. **Stale CAS Conflict:**
+   - Concurrently trigger two transitions against the same version.
+   - Assert that exactly one succeeds with HTTP 200/202 and the second is rejected with HTTP 409 Conflict.
 
 ---
 
-## 6. Load & Concurrency Tests (`scripts/test/test.load.sh`)
+## Tier 4: Micro-Performance & Allocation Benchmarks (`*.performance.test.[ext]`)
 
-### Purpose & Requirements
-- Verify system performance under sustained concurrent load:
-  - Connection pool stability (ensuring PostgreSQL pool does not exhaust).
-  - Background saga poller throughput under contention.
-  - Zero deadlocks under concurrent lease acquisition (`FOR UPDATE SKIP LOCKED`).
-  - Fencing token monotonicity under rapid worker failover.
-- Must measure p50, p95, and p99 latency percentiles and error rates.
-
-### Canonical Pattern (`scripts/test/test.load.sh`)
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CONCURRENCY="${CONCURRENCY:-20}"
-TOTAL_REQUESTS="${TOTAL_REQUESTS:-500}"
-TARGET_URL="http://127.0.0.1:8088/api/v1/sagas/execute"
-
-echo "=== LAUNCHING LOAD TEST (${CONCURRENCY} workers, ${TOTAL_REQUESTS} requests) ==="
-
-# Execute load runner (using hey, k6, or concurrent Go worker script)
-python3 - << EOF
-import concurrent.futures, requests, time, uuid
-
-def submit_saga(i):
-    url = "${TARGET_URL}"
-    payload = {
-        "tenantId": "default",
-        "workflowName": "load_workflow",
-        "workflowVersion": 1,
-        "source": "load_test",
-        "externalId": f"load_ext_{i}_{uuid.uuid4()}",
-        "correlationId": str(uuid.uuid4()),
-        "initialPayload": {"index": i}
-    }
-    start = time.time()
-    resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"})
-    return resp.status_code, (time.time() - start) * 1000
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=${CONCURRENCY}) as executor:
-    results = list(executor.map(submit_saga, range(${TOTAL_REQUESTS})))
-
-statuses = [r[0] for r in results]
-latencies = sorted([r[1] for r in results])
-
-p50 = latencies[int(len(latencies) * 0.50)]
-p95 = latencies[int(len(latencies) * 0.95)]
-p99 = latencies[int(len(latencies) * 0.99)]
-
-print(f"Results: Total={len(statuses)}, Success={statuses.count(202)}, Errors={len(statuses)-statuses.count(202)}")
-print(f"Latency: p50={p50:.2f}ms, p95={p95:.2f}ms, p99={p99:.2f}ms")
-EOF
-```
+### Mandatory Characteristics
+- **Target:** Hot loops, topological sorters, regex compilers, state machines, hash digests.
+- **Budgets:**
+  - Latency: Hot execution paths must complete within strict nanosecond/microsecond budgets.
+  - Allocations: In garbage-collected languages (Go, Java), hot loops must maintain strict memory allocation quotas (`0 allocs/op` for pure logic).
 
 ---
 
-# PART IV: HUMAN TESTING CHECKLIST VS AI MOCK CHECKLIST
+## Tier 5: Real Infrastructure Verification Harness (`scripts/test/test.real.sh`)
 
-Every pull request and architectural verification must be audited against this checklist to eliminate synthetic AI testing illusions:
+### Mandatory Characteristics
+- **Execution Standard:** A standalone, fully-automated bash test harness running directly in CI or on developer workstations.
+- **Scope:** Compiles the real production binary, boots mock downstream microservices, starts background daemons with real network binding, and executes end-to-end user journeys using real HTTP clients (`curl`).
 
-| Testing Vector | Synthetic AI Approach (BANNED) | Real Human Engineer Approach (MANDATORY) |
-| :--- | :--- | :--- |
-| **Database** | Pure mock struct in memory returning pre-baked structs | Real PostgreSQL container verifying real SQL constraints, types, and indexes |
-| **Async Operations** | Arbitrary `time.Sleep(3 * time.Second)` | Bounded exponential backoff loop polling terminal database state |
-| **Downstream APIs** | Hardcoded function stubs | Real HTTP mock server verifying network requests, headers, and timeouts |
-| **Error Handling** | Only happy path `err == nil` assertions | Chaos injection: HTTP 500 downstream, connection drops, stale CAS versions |
-| **Process Lifecycles** | Leaves background daemons dangling on host | `trap cleanup EXIT INT TERM` killing all child PIDs and removing temp files |
-| **Configuration** | Hardcoded `localhost:8080` and `postgres` password | 12-factor environment variables (`PORT`, `DB_HOST`, `DB_PASSWORD`) with overrides |
-| **Security Validation** | Disables SSRF / loopback guards in test mode | Resolves local machine DNS hostname to satisfy production security checks |
-| **Performance** | Assumes code is fast without measurement | Runs `-benchmem` micro-benchmarks verifying zero heap allocation in hot paths |
-| **Concurrency** | Tests with a single sequential call | Runs concurrent worker pools pushing fencing tokens and lease locks to contention |
+### Mandatory Lifecycle Architecture (`test.real.sh`)
 
----
-
-# PART V: CI/CD PIPELINE INTEGRATION STANDARD
-
-Automated CI pipelines (GitHub Actions, GitLab CI) must execute the test suite in strict order of increasing resource cost:
+Every `test.real.sh` harness MUST follow this exact 8-phase lifecycle:
 
 ```mermaid
-flowchart LR
-    A["Stage 1: Unit Tests<br/>(scripts/test/test.unit.sh)"] --> B["Stage 2: Benchmarks<br/>(go test -bench=.)"]
-    B --> C["Stage 3: Integration Tests<br/>(scripts/test/test.integration.sh)"]
-    C --> D["Stage 4: Real E2E Harness<br/>(scripts/test/test.real.sh)"]
-    D --> E["Stage 5: Concurrency / Load<br/>(scripts/test/test.load.sh)"]
+flowchart TD
+    P1["Phase 1: Environment & 12-Factor Setup<br/>(Dynamic ports, hostnames, DB credentials)"] --> P2["Phase 2: Signal Trap Registration<br/>(trap cleanup EXIT INT TERM ERR)"]
+    P2 --> P3["Phase 3: Launch Downstream Mock Services<br/>(Mock HTTP server for downstream steps)"]
+    P3 --> P4["Phase 4: Compile Production Binary<br/>(Real compiler build to isolated temp dir)"]
+    P4 --> P5["Phase 5: Launch Daemon & Readiness Probe<br/>(Poll /health/ready until HTTP 200)"]
+    P5 --> P6["Phase 6: Execute cURL Scenario Test Suite<br/>(Admin, Workflows, State Machine, Sagas)"]
+    P6 --> P7["Phase 7: Asynchronous DB Convergence Audit<br/>(Poll PostgreSQL directly for terminal state)"]
+    P7 --> P8["Phase 8: Automatic Process Cleanup<br/>(Kill daemons, mock servers, prune temp files)"]
 ```
 
-### Pipeline Failure Action Plan
-1. If Stage 1 fails: Reject build immediately. Business rules or input schemas have broken.
-2. If Stage 2 fails: Reject build if allocation budgets exceed thresholds. Memory leak introduced.
-3. If Stage 3 fails: PostgreSQL migration or adapter query syntax error. Inspect SQL schema.
-4. If Stage 4 fails: Runtime lifecycle, wiring, networking, or async poller defect. Inspect `engine.log`.
-5. If Stage 5 fails: Concurrency deadlock, connection pool starvation, or lease lock collision.
+### Strict Implementation Rules for `test.real.sh`
+1. **Signal Trapping:**
+   ```bash
+   cleanup() {
+       local exit_code=$?
+       if [[ -n "${ENGINE_PID:-}" ]] && kill -0 "${ENGINE_PID}" 2>/dev/null; then
+           kill -TERM "${ENGINE_PID}" 2>/dev/null || true
+           wait "${ENGINE_PID}" 2>/dev/null || true
+       fi
+       if [[ -n "${MOCK_PID:-}" ]] && kill -0 "${MOCK_PID}" 2>/dev/null; then
+           kill -TERM "${MOCK_PID}" 2>/dev/null || true
+           wait "${MOCK_PID}" 2>/dev/null || true
+       fi
+       rm -rf "${TMP_DIR:-}"
+       exit ${exit_code}
+   }
+   trap cleanup EXIT INT TERM ERR
+   ```
+2. **Deep Readiness Probing (No Blind Sleep):**
+   ```bash
+   READY=0
+   for i in $(seq 1 30); do
+       STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${ADMIN_PORT}/health/ready" || true)
+       if [[ "${STATUS}" == "200" ]]; then
+           READY=1
+           break
+       fi
+       sleep 1
+   done
+   if [[ ${READY} -ne 1 ]]; then
+       echo "FATAL: Service failed to achieve deep readiness!"
+       exit 1
+   fi
+   ```
+3. **Asynchronous Database Convergence Polling:**
+   ```bash
+   COMPLETED=0
+   for i in $(seq 1 30); do
+       STATE=$(curl -s "http://127.0.0.1:${PORT}/api/v1/sagas/${SAGA_ID}?tenantId=default" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['currentState'])" 2>/dev/null || echo "PENDING")
+       if [[ "${STATE}" == "COMPLETED" ]]; then
+           COMPLETED=1
+           break
+       fi
+       sleep 1
+   done
+   if [[ ${COMPLETED} -ne 1 ]]; then
+       echo "FATAL: Saga failed to converge to COMPLETED within 30 seconds!"
+       exit 1
+   fi
+   ```
+
+---
+
+## Tier 6: High-Concurrency Load & Saturation Tests (`scripts/test/test.load.sh`)
+
+### Mandatory Characteristics
+- **Target:** Concurrency limits, database connection pool exhaustion, file descriptor limits, fencing token monotonicity under contention.
+- **Execution:** Spawns concurrent client workers sending continuous traffic against running services.
+- **Reporting:** Must report total requests, success count, failure count, and latency percentiles (`p50`, `p95`, `p99`).
+
+### Strict Failure Criteria
+- Error rate must be **0.00%** under normal rated capacity.
+- Maximum p95 latency must remain below the documented SLA budget (e.g. `< 250ms`).
+- Database connection pool must not leak (active connections return to baseline after load terminates).
+- Fencing tokens in database rows must remain strictly monotonic.
+
+---
+
+# PART IV: HUMAN TESTING AUDIT VS SYNTHETIC AI ILLUSIONS
+
+Every pull request and test suite review MUST be audited against this comparative standard. Any reliance on the "Synthetic AI Approach" is grounds for immediate PR rejection:
+
+| Testing Vector | Synthetic AI Approach (STRICTLY BANNED) | Real Human Engineer Approach (MANDATORY) |
+| :--- | :--- | :--- |
+| **Database Verification** | In-memory mock returning hardcoded fake structs | Real PostgreSQL container verifying physical SQL constraints, types, and indexes |
+| **Async Operations** | Arbitrary `sleep(5)` hoping operations finish | Bounded exponential retry loop polling terminal state from database or API |
+| **Downstream Dependencies** | Mock functions that always return `200 OK` | Real HTTP mock server verifying network wire format, headers, retries, and errors |
+| **Adversarial Scenarios** | Tests only the success path; ignores failures | Injects HTTP 500 downstream, socket disconnects, stale CAS versions, poison pills |
+| **Process Lifecycles** | Leaves background daemons dangling on host ports | Explicit `trap cleanup EXIT INT TERM ERR` terminating all child PIDs |
+| **Configuration** | Hardcoded `localhost:8080` and `postgres` passwords | 12-factor environment variables (`PORT`, `DB_HOST`, `DB_PORT`) with dynamic overrides |
+| **Security Validation** | Disables SSRF / loopback filters to pass tests | Resolves local machine DNS hostname to satisfy production security policies |
+| **Performance** | Assumes code is fast without measurement | Micro-benchmarking verifying allocation quotas and latency percentiles |
+| **Concurrency** | Single-threaded sequential unit calls | Concurrent worker pools stressing lease locks, connection pools, and CAS fencing |
+
+---
+
+# PART V: CI/CD PIPELINE ENFORCEMENT & HARD FAILURE GATES
+
+Automated CI/CD pipelines MUST execute all test tiers in strict sequential order of increasing computational cost. A failure at any stage MUST immediately halt the pipeline and dump diagnostic logs:
+
+```
+[Stage 1: Unit Tests] ─────────► [Stage 2: Benchmarks] ─────────► [Stage 3: Integration Tests]
+        │                                │                                    │
+    (Failure)                        (Failure)                            (Failure)
+        ▼                                ▼                                    ▼
+Reject Build Immediately         Reject Build Immediately             Reject Build Immediately
+(Domain logic broken)            (Memory/latency regression)          (SQL schema / DB broken)
+                                                                              │
+                                                                              ▼
+                                                                [Stage 4: Real E2E Harness]
+                                                                              │
+                                                                          (Failure)
+                                                                              ▼
+                                                                  Reject Build Immediately
+                                                                (Wire / async poller broken)
+                                                                              │
+                                                                              ▼
+                                                                [Stage 5: Load / Saturation]
+                                                                              │
+                                                                          (Failure)
+                                                                              ▼
+                                                                  Reject Build Immediately
+                                                                (Deadlock / pool exhaustion)
+```
+
+### Zero-Tolerance Pipeline Invariants
+1. **Never Skip Real Infrastructure Tests in CI:** CI workflows must spin up a real PostgreSQL service container. Disabling integration or real tests in CI is an immediate compliance violation.
+2. **Never Ignore Test Exit Codes:** Any test runner script must run with `set -euo pipefail`. Any non-zero exit code anywhere in a pipeline MUST fail the build.
+3. **Mandatory Log Dumps on Crash:** When `test.real.sh` fails, it must automatically tail and print the last 50 lines of daemon stdout/stderr before exiting.
