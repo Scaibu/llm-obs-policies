@@ -529,3 +529,25 @@ cosign sign --yes "$REGISTRY/$NAME@$DIGEST"
 ### `rollback.sh`
 1. Load `/var/lib/deploy/previous.env` and redeploy prior digests via `docker compose up -d --wait`.
 2. Never rollback database schemas destructively; database migrations must remain forward and backward compatible (expand-and-contract pattern) so older application code executes safely against the current schema.
+---
+
+# PART VII: DOCKER OPERATIONS, SCRIPT MAINTENANCE & DATA PERSISTENCE SPECIFICATION
+
+## 1. Script-Driven Docker Maintenance Invariant (`scripts/run/`)
+1. **Never Require Manual Docker Commands:** Developers and automated systems must never be expected to manually invoke bare `docker compose up`, `docker compose down`, or custom inline flags. All operations MUST be fully managed via reproducible, hardened shell scripts in `scripts/run/` (`infra.sh`, `run.sh`, `run.prod.sh`).
+2. **Deterministic Script Structure:**
+   - Every script must enforce `set -euo pipefail`.
+   - Scripts must automatically validate prerequisites, generate required default local secrets (e.g. `secrets/db_password.txt`), and prepare environment configs before invoking Docker.
+   - Scripts must handle health checks, error diagnosis, container verification, and idempotent boots seamlessly.
+   - Operations must provide standard unified commands (`up`, `down`, `restart`, `status`, `logs`, `test`).
+
+## 2. Stateful Data Persistence & Ephemeral Container Contract
+1. **Named Volumes for All Stateful Datastores:**
+   - Every datastore requiring state persistence (e.g., PostgreSQL, Kafka/Zookeeper, Redis if persistent, Loki/Prometheus if stateful) MUST use explicit, project-scoped named Docker volumes (e.g., `${COMPOSE_PROJECT_NAME:-dist_tx}_pgdata`).
+   - Volumes must be declared under top-level `volumes:` and properly mounted to the exact path where the database stores its cluster/log data.
+2. **Explicit Data Subdirectory Invariant (`PGDATA` / Storage Paths):**
+   - In container configurations (e.g. PostgreSQL), mount volumes into the storage parent (e.g., `/var/lib/postgresql/data`) and explicitly configure the engine data directory variable (`PGDATA: /var/lib/postgresql/data/pgdata`). This prevents mount point collision and catastrophic data loss when containers are destroyed or recreated.
+3. **Container Ephemerality with Reusable Persistence:**
+   - Containers are strictly ephemeral: stopping, killing, crashing, or deleting a container MUST NOT delete data.
+   - When a container boots, it must automatically discover existing cluster files in the persistent volume and reuse them immediately without reinitializing or overwriting data.
+   - Never use `docker compose down -v` or prune named volumes in run/infra maintenance scripts.
