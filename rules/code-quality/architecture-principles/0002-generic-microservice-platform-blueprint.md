@@ -4,6 +4,7 @@
 - **Audience:** Anyone building a new product with the same shape. Names are placeholders:
   `<gateway>`, `<svc>` (a business service), `<tenant>`, `<domain>`.
 - **Companion:** `0001-hrms-microservice-architecture.md` is the HRMS-specific instance.
+- **Contents:** Sections 1-19 = generic blueprint + diagrams. Part 2 (HLD and LLD) and Part 3 (structure, functions, connections, tech stack) use this repo (HRMS, `leave` service) as the worked example.
 - **Provenance:** Every concrete value (ports, properties, class names) was read from this repo's
   config and code. Items marked **(verify)** were not traced end to end. Version numbers are the
   ones in this repo and are examples, not requirements.
@@ -796,3 +797,971 @@ erDiagram
     SERVICE_A_ENTITY ||..o{ SERVICE_B_REF_A : "copied via Kafka (async)"
     SERVICE_B_REF_A ||--o{ SERVICE_B_ENTITY : "local lookup"
 ```
+
+
+---
+
+# PART 2: HLD AND LLD (worked example: HRMS, `leave` service)
+
+## PART A: HIGH-LEVEL DESIGN (HLD)
+
+### A1. What the system is, in one paragraph
+A browser app is served by a **gateway**. The gateway logs the user in through an **identity provider**,
+then forwards each API call to the right **business service** (found through a **registry**), adding the
+user's token. Each service has its **own database**. Services tell each other about changes by publishing
+**events on Kafka**, never by reading each other's databases. Every row belongs to a **tenant** taken from
+the user's token.
+
+### A2. Component responsibilities
+
+| Component | Responsibility | Talks to | Protocol |
+|---|---|---|---|
+| Browser SPA (Angular) | Screens, calls `/services/<svc>/api/...` | Gateway only | HTTPS, JSON, session cookie |
+| Gateway | Serve SPA, login, CSRF, route, relay token | IdP, registry, services, own DB | HTTP, OIDC, R2DBC |
+| Identity provider (Keycloak) | Users, roles, organizations (tenants), tokens | Gateway, services (JWKS) | OIDC/OAuth2 |
+| Registry (Consul) | Who is running where, health, shared config | All services | HTTP |
+| Business service | One domain: API, rules, data | Own DB, Kafka, registry, IdP (JWKS) | REST, JDBC, Kafka |
+| PostgreSQL (one per service) | Durable data of that service only | Its service | JDBC |
+| Kafka | Durable ordered event log between services | Services | Kafka protocol |
+
+### A3. Three views of the same system
+
+#### A3.1 Logical view (who owns what)
+
+```mermaid
+flowchart LR
+    subgraph UI[Presentation]
+        spa[Angular SPA]
+    end
+    subgraph EDGE[Edge]
+        gw[Gateway]
+    end
+    subgraph DOM[Domain services]
+        emp[employee<br/>people and org data]
+        lv[leave<br/>leave rules and balances]
+        att[attendance<br/>time tracking]
+        ast[asset<br/>equipment]
+    end
+    subgraph X[Cross-cutting]
+        idp[Identity]
+        reg[Registry and config]
+        bus[Event bus]
+    end
+    spa --> gw --> emp & lv & att & ast
+    gw --> idp
+    emp & lv & att & ast --> idp
+    emp & lv & att & ast --> reg
+    emp & lv & att & ast <--> bus
+```
+
+#### A3.2 Process view (what runs and how they connect)
+See `this document, section 19.1 (containers) and 19.7 (startup order).
+
+#### A3.3 Data view (who stores what)
+
+```mermaid
+flowchart TB
+    gw[Gateway] --- g[(gateway DB)]
+    emp[employee] --- e[(employee DB<br/>Employee, Company, Holiday ...)]
+    lv[leave] --- l[(leave DB<br/>LeaveRequest, LeaveBalance, ...<br/>+ EmployeeRef, HolidayRef copies<br/>+ outbox_event)]
+    att[attendance] --- a[(attendance DB)]
+    ast[asset] --- s[(asset DB)]
+    e -. "events (async copy)" .-> l
+```
+Rule: arrows between databases do not exist. Only the dotted event path moves data across services.
+
+### A4. Key end-to-end flows (HLD level)
+
+| # | Flow | Path | Diagram |
+|---|---|---|---|
+| 1 | Login | Browser, Gateway, IdP, back with session | this document, 19.2 |
+| 2 | API call | Browser, Gateway, registry, Service, DB | this document, 19.3 |
+| 3 | Publish event | Service tx writes row + outbox, publisher sends to Kafka | this document, 19.4 |
+| 4 | Consume event | Consumer sets tenant from header, upserts local copy | this document, 19.4/19.5 |
+| 5 | Tenant resolution | token claim or header to Hibernate | this document, 19.6 |
+| 6 | Build and ship | push, CI matrix, (CD recommended) | this document, 19.8 |
+
+### A5. Quality attributes: how each is achieved
+
+| Attribute | Mechanism | Where |
+|---|---|---|
+| Security | OIDC login, JWT validation (issuer + audience), `@PreAuthorize`, CSRF, CSP | Gateway + each service |
+| Tenant isolation | Hibernate `@TenantId`, tenant only from token/header | Each service `tenancy/` |
+| Availability | Local reference copies, async events, health-based routing | Services, Consul |
+| Consistency | Strong inside a service (DB tx, row locks); eventual across services | Workflow service, outbox |
+| Scalability | Stateless services, add instances; Kafka partitions by key | Services, Kafka |
+| Observability | `/management/health`, Prometheus metrics, structured logs | Each service |
+| Evolvability | Versioned topics, additive schema, Liquibase, one folder per service | Repo |
+
+### A6. HLD risks and decisions needing follow-up
+- Single Kafka broker and single instances (compose) are not HA. Plan production topology.
+- Gateway is a single entry point and the heaviest build.
+- Trust-auth databases in compose must never reach production.
+- Token pasted in chat or logs must be rotated.
+
+---
+
+## PART B: LOW-LEVEL DESIGN (LLD): the `leave` service
+
+Base package: `com.blute.hrms.leave`. Port 8082. DB: its own PostgreSQL via JDBC + Liquibase.
+
+### B1. Package and class map
+
+```
+leave/src/main/java/com/blute/hrms/leave/
+├── web/rest/                 HTTP layer
+│   ├── LeaveWorkflowResource     /api   (employee self-service + approve/reject)
+│   ├── ManagerLeaveResource      /api/manager
+│   ├── HrLeaveResource           /api/hr
+│   ├── LeaveTypeResource         /api/leave-types
+│   └── errors/                   ExceptionTranslator
+├── service/
+│   ├── workflow/                 business rules
+│   │   ├── LeaveWorkflowService      apply, cancel, approve/reject (decide), views, balance adjust
+│   │   ├── CurrentEmployee           maps JWT user to EmployeeRef, isHr()
+│   │   ├── WorkingDayCalculator      weekends/holidays excluded
+│   │   ├── LeaveCalendar             leave year logic
+│   │   ├── LeaveBalanceProvisioner   create/freeze balances for employees
+│   │   ├── LeaveEventPublisher       builds LeaveEvent and records to outbox
+│   │   ├── LeaveViews, LeaveExceptions
+│   ├── events/                   outbox
+│   │   ├── OutboxService             record(...) (tx MANDATORY)
+│   │   ├── OutboxPublisher           scheduled drain to Kafka
+│   │   └── EventBindings             binding, event type and header constants
+│   ├── sync/                     foreign data copies
+│   │   ├── ReferenceDataSync         onEmployeeEvent / onHolidayEvent
+│   │   ├── EmployeeEvent, HolidayEvent   payload records
+│   ├── dto/, mapper/             LeaveTypeDTO etc.
+├── repository/                   Spring Data: LeaveRequest, LeaveBalance, LeaveApproval, LeaveType,
+│                                 LeaveBalanceAdjustment, EmployeeRef, HolidayRef, OutboxEvent
+├── domain/                       entities (below) + enumeration/
+├── tenancy/                      TenantContext, TenantIdentifierResolver, TenantContextCleanupFilter,
+│                                 TenantNotResolvedException
+├── config/                       SecurityConfiguration, ReferenceDataConsumers (Kafka), DB, Liquibase, Async, Clock...
+└── security/                     AuthoritiesConstants, SecurityUtils
+```
+
+### B2. Layering rule
+
+```mermaid
+flowchart LR
+    R[web.rest<br/>Resource] --> S[service<br/>workflow / events / sync]
+    S --> P[repository]
+    P --> D[(PostgreSQL)]
+    S --> O[OutboxService]
+    O --> P
+    C[config<br/>ReferenceDataConsumers] --> Y[sync.ReferenceDataSync]
+    Y --> P
+    T[tenancy] -. used by .-> R
+    T -. used by .-> S
+    T -. used by .-> E[domain entities]
+```
+Resources contain no business rules; services do. Only services touch repositories. Only `OutboxService` writes events.
+
+### B3. Class diagram (core domain)
+
+```mermaid
+classDiagram
+    class AbstractTenantAuditingEntity {
+        <<abstract>>
+        -String tenantId  @TenantId, no setter
+        -String createdBy
+        -Instant createdDate
+        -String lastModifiedBy
+        -Instant lastModifiedDate
+        #requireTenant() PrePersist/PreUpdate
+    }
+    class LeaveType {
+        Long id
+        String typeName
+        Boolean active
+    }
+    class LeaveBalance {
+        Long id
+        Long employeeId
+        Integer year
+        Integer remainingDays
+        Boolean active
+    }
+    class LeaveRequest {
+        Long id
+        Long employeeId
+        Long managerId
+        LocalDate startDate
+        LocalDate endDate
+        Integer daysCount
+        String reason
+        LeaveRequestStatus status
+        Instant appliedAt
+    }
+    class LeaveApproval {
+        Long id
+        Long approverId
+        ApprovalAction action
+        ApprovalStage stage
+        String remarks
+        Instant actionAt
+    }
+    class EmployeeRef {
+        Long id  source employee id
+        Long managerId
+        boolean active
+        Instant sourceUpdatedAt
+    }
+    class HolidayRef
+    class OutboxEvent {
+        Long id
+        String tenantId
+        String binding
+        String aggregateId
+        String eventType
+        String payload
+        Instant createdAt
+        Instant publishedAt
+        int attempts
+        String lastError
+    }
+    AbstractTenantAuditingEntity <|-- LeaveType
+    AbstractTenantAuditingEntity <|-- LeaveBalance
+    AbstractTenantAuditingEntity <|-- LeaveRequest
+    AbstractTenantAuditingEntity <|-- LeaveApproval
+    AbstractTenantAuditingEntity <|-- EmployeeRef
+    AbstractTenantAuditingEntity <|-- HolidayRef
+    LeaveRequest "many" --> "1" LeaveType
+    LeaveApproval "many" --> "1" LeaveRequest
+    LeaveBalance ..> LeaveType : by leaveTypeId
+```
+Notes: `OutboxEvent` is a plain entity (not tenant-filtered; it stores `tenant_id` explicitly so the publisher can
+send events for all tenants). The `LeaveBalance`/`LeaveType` field list above shows the fields seen in the workflow
+code; other columns may exist **(verify)**. `employeeId` and `managerId` are IDs of the employee service's data, with no cross-service foreign key.
+
+### B4. Database LLD
+
+Liquibase changelogs (in order): `00000000000000_initial_schema`, `20231208143306_added_entity_LeaveType`,
+`..._LeaveBalance` (+ constraints), `..._LeaveRequest` (+ constraints), `..._LeaveApproval` (+ constraints),
+`20261103000000_tenancy_and_audit` (adds `tenant_id`, audit columns, indexes, per-tenant uniques),
+`20261104000100_leave_workflow` (workflow tables such as refs, outbox, adjustments).
+
+```mermaid
+erDiagram
+    LEAVE_TYPE ||--o{ LEAVE_REQUEST : "leave_type_id"
+    LEAVE_TYPE ||--o{ LEAVE_BALANCE : "leave type"
+    LEAVE_REQUEST ||--o{ LEAVE_APPROVAL : "history"
+    LEAVE_BALANCE ||--o{ LEAVE_BALANCE_ADJUSTMENT : "manual changes"
+    EMPLOYEE_REF ||..o{ LEAVE_REQUEST : "employee_id (no FK across services)"
+    LEAVE_REQUEST {
+        bigint id PK
+        varchar tenant_id "not null, indexed"
+        bigint employee_id
+        bigint manager_id "nullable"
+        date start_date
+        date end_date
+        int days_count
+        varchar reason "max 1000"
+        varchar status "enum string"
+        timestamp applied_at
+    }
+    OUTBOX_EVENT {
+        bigint id PK "sequence outbox_event_seq, alloc 50"
+        varchar tenant_id "64, not null"
+        varchar binding "100"
+        varchar aggregate_id "64"
+        varchar event_type "64"
+        text payload
+        timestamp created_at
+        timestamp published_at "null until sent"
+        int attempts
+        varchar last_error "1000"
+    }
+```
+
+Design rules in the schema: every tenant table has `tenant_id varchar(64) not null`, audit columns, an index on
+`tenant_id`, and unique constraints that include `tenant_id`.
+
+### B5. Tenancy LLD (exact mechanics)
+
+```mermaid
+classDiagram
+    class TenantContext {
+        +ROOT = "__root__"
+        -ThreadLocal CURRENT
+        +get() Optional
+        +set(String)
+        +clear()
+        +callAs(tenant, Supplier) T
+        +runAs(tenant, Runnable)
+    }
+    class TenantIdentifierResolver {
+        +TENANT_CLAIM = "organization"
+        +NO_TENANT = "__none__"
+        +resolveCurrentTenantIdentifier() String
+        +currentTenant() Optional
+        +extractTenant(claims) Optional
+        +isRoot(tenant) boolean
+    }
+    class TenantContextCleanupFilter
+    class TenantNotResolvedException
+    TenantIdentifierResolver ..> TenantContext : 1st choice
+    TenantIdentifierResolver ..> SecurityContextHolder : 2nd choice JWT claim
+    TenantContextCleanupFilter ..> TenantContext : clear() after request
+    TenantIdentifierResolver ..> TenantNotResolvedException
+```
+
+Resolution algorithm (`TenantIdentifierResolver.currentTenant`):
+1. If `TenantContext` has a value, use it (Kafka consumers, jobs, tests).
+2. Else if the authentication is a `JwtAuthenticationToken`, read claim `organization`.
+   Claim may be a collection, a map (keys used), or a single string.
+3. More than one organization: throw `TenantNotResolvedException` (phase-2 TODO).
+4. A single org equal to `__root__` or `__none__`: throw (reserved ids cannot be claimed by users).
+5. Nothing found: Hibernate gets `__none__`, which matches no rows.
+
+Write guard (`AbstractTenantAuditingEntity.requireTenant`, `@PrePersist/@PreUpdate`): if no tenant or tenant is
+`__root__`, throw. So root can read all tenants but can never write.
+
+`callAs` restores the previous value in `finally`, so nesting is safe. Remember: set the tenant before the
+transaction opens, because Hibernate fixes a session's tenant at open.
+
+### B6. REST API LLD
+
+| Resource | Base path | Authorization | Endpoints |
+|---|---|---|---|
+| LeaveWorkflowResource | `/api` | `isAuthenticated()` (rules inside service) | `POST /leave-requests`, `GET /leave-requests/{id}`, `GET /leave-requests/{id}/approvals`, `POST /leave-requests/{id}/cancel`, `POST /leave-requests/{id}/approve`, `POST /leave-requests/{id}/reject`, `GET /leave-requests/working-days`, `GET /me/leave-requests`, `GET /me/leave-balances`, `GET /me/leave-types`, `GET /me/leave-approvals` |
+| ManagerLeaveResource | `/api/manager` | `isAuthenticated()` | `GET /leave-requests`, `GET /team`, `GET /team-calendar`, `GET /team-availability` |
+| HrLeaveResource | `/api/hr` | `ROLE_SUPER_ADMIN` or `ROLE_HR` | `GET /leave-requests`, `GET /employees/{employeeId}/leave-balances`, `PUT /leave-balances/{id}` |
+| LeaveTypeResource | `/api/leave-types` | `ROLE_SUPER_ADMIN` or `ROLE_HR` | `POST ""`, `PUT /{id}`, `PATCH /{id}` (merge-patch), `GET ""`, `GET /{id}`, `DELETE /{id}` |
+
+Through the gateway each is reached as `/services/leave/api/...`.
+Note the pattern: coarse role check at the class (`@PreAuthorize`), fine-grained rules (own request, assigned manager) in the service.
+
+### B7. Core algorithm: apply for leave (`LeaveWorkflowService.apply`)
+
+```mermaid
+flowchart TD
+    A([POST /leave-requests]) --> B[me = currentEmployee.require]
+    B --> C["lock employee row<br/>employees.findByIdForUpdate"]
+    C --> D[validateDates]
+    D --> E{LeaveType exists and active?}
+    E -->|no| X1[/rule error: not found or inactive/]
+    E -->|yes| F{existsOverlapping<br/>PENDING_MANAGER, PENDING_HR, APPROVED?}
+    F -->|yes| X2[/rule error: already have leave/]
+    F -->|no| G[days = workingDays.calculate start..end<br/>excludes weekends and holidays]
+    G --> H{leaveDays == 0?}
+    H -->|yes| X3[/rule error: no leave needed/]
+    H -->|no| I[year = calendar.leaveYearOf start]
+    I --> J["balance = balances.findForUpdate(emp,type,year) active"]
+    J -->|missing| X4[/rule error: no balance, contact HR/]
+    J --> K["available = remainingDays - pendingDays"]
+    K --> L{available >= leaveDays?}
+    L -->|no| X5[/rule error: insufficient balance/]
+    L -->|yes| M["status = manager exists ? PENDING_MANAGER : PENDING_HR"]
+    M --> N[requests.save]
+    N --> O["events.publish LEAVE_REQUESTED (outbox, same tx)"]
+    O --> P([return LeaveRequestView])
+```
+Concurrency: the employee row lock serialises two simultaneous applications by the same person; `findForUpdate` locks the balance row.
+
+### B8. Core algorithm: approve / reject (`decide`)
+
+```mermaid
+flowchart TD
+    A([approve or reject]) --> R{reject and remarks blank?}
+    R -->|yes| X0[/rule error: remarks required/]
+    R -->|no| B[lock request findByIdForUpdate]
+    B --> C{isHr or assigned manager?}
+    C -->|no| X1[/404 not found: do not reveal/]
+    C -->|yes| D{own request?}
+    D -->|yes| X2[/403 cannot decide own/]
+    D -->|no| E{status}
+    E -->|PENDING_MANAGER| F["stage = assigned manager ? MANAGER : HR (HR may decide directly)"]
+    E -->|PENDING_HR| G{isHr?}
+    G -->|no| X3[/409 waiting for HR/]
+    G -->|yes| H[stage = HR]
+    E -->|terminal| X4[/409 already decided/]
+    F --> I{action}
+    H --> I
+    I -->|REJECTED| J[status = REJECTED, event LEAVE_REJECTED]
+    I -->|APPROVED and stage MANAGER| K[status = PENDING_HR, event LEAVE_MANAGER_APPROVED]
+    I -->|APPROVED and stage HR| L["deduct(): lock balance, check remaining >= days, subtract<br/>status = APPROVED, event LEAVE_APPROVED"]
+    J --> M[save LeaveApproval row: approver, action, stage, remarks]
+    K --> M
+    L --> M
+    M --> N["events.publish(...) via outbox"]
+    N --> O([return view])
+```
+
+Corrected state machine (includes HR deciding directly at stage 1):
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING_MANAGER: apply (employee has manager)
+    [*] --> PENDING_HR: apply (no manager)
+    PENDING_MANAGER --> PENDING_HR: assigned manager approves
+    PENDING_MANAGER --> APPROVED: HR approves directly (balance deducted)
+    PENDING_MANAGER --> REJECTED: manager or HR rejects (remarks required)
+    PENDING_HR --> APPROVED: HR approves (balance deducted)
+    PENDING_HR --> REJECTED: HR rejects (remarks required)
+    PENDING_MANAGER --> CANCELLED: owner cancels
+    PENDING_HR --> CANCELLED: owner cancels
+    PENDING_MANAGER --> CANCELLED: employee deactivated (system)
+    PENDING_HR --> CANCELLED: employee deactivated (system)
+    APPROVED --> [*]
+    REJECTED --> [*]
+    CANCELLED --> [*]
+```
+
+#### Business rules (from the class Javadoc and code)
+1. Leave days exclude weekends and the tenant's holidays.
+2. Available balance = remaining minus days waiting in either approval stage.
+3. Balance is deducted only at final approval; balance and employee rows are locked (no double spend).
+4. Nobody acts on their own request; terminal requests cannot be acted on.
+5. Assigned manager acts at stage 1; HR/tenant admin at stage 2 and may decide a stage-1 request directly.
+6. Employees without a manager go straight to HR.
+7. Rejection requires remarks.
+8. Max span `MAX_SPAN_DAYS = 366`; team warning threshold `TEAM_WARNING_PERCENT = 40.0` (team availability view).
+9. Requests of other people return 404, not 403, to avoid leaking existence.
+
+### B9. Outbox LLD
+
+```mermaid
+sequenceDiagram
+    participant WS as LeaveWorkflowService (@Transactional)
+    participant EP as LeaveEventPublisher
+    participant OS as OutboxService
+    participant DB as outbox_event
+    participant PUB as OutboxPublisher
+    participant SB as StreamBridge
+    participant K as Kafka
+    WS->>EP: publish(eventType, request, actorId, remarks)
+    EP->>OS: record(binding, aggregateId, eventType, payload)
+    Note over OS: @Transactional(MANDATORY) so it joins the caller's tx.<br/>Tenant from TenantIdentifierResolver, else exception.
+    OS->>DB: save OutboxEvent(tenant, binding, aggregateId, type, json, now)
+    loop @Scheduled fixedDelay = application.outbox.poll-interval (PT1S)
+        PUB->>DB: lockNextBatch(100) in a transaction
+        loop each event in batch
+            PUB->>SB: send(binding, Message)
+            alt send true
+                PUB->>DB: markPublished(now)
+            else false or exception
+                PUB->>DB: markFailed(reason) attempts++, then STOP batch (keep order)
+            end
+        end
+    end
+    Note over PUB: Repeats immediately while a full batch (100) was sent.<br/>Daily cleanup cron "0 17 3 * * *" deletes rows published before now - retention (P7D).
+```
+
+Message format built by `toMessage`:
+
+| Part | Value |
+|---|---|
+| Payload | JSON string of the event |
+| Kafka key | `"<tenantId>:<aggregateId>"` (ordering per tenant and aggregate) |
+| Header `tenantId` | tenant of the event |
+| Header `eventType` | e.g. `LEAVE_APPROVED` |
+| Header `eventId` | outbox row id |
+
+Events produced: `LEAVE_REQUESTED`, `LEAVE_MANAGER_APPROVED`, `LEAVE_APPROVED`, `LEAVE_REJECTED`,
+`LEAVE_CANCELLED`, `LEAVE_BALANCE_ADJUSTED`, on binding `leaveEvents-out-0` (topic `hrms.leave.events.v1`).
+Delivery: at-least-once. If an event fails, later events in that batch wait, so per-batch order is preserved.
+The exact lock query in `lockNextBatch` (e.g. `FOR UPDATE SKIP LOCKED`) was not read **(verify)**.
+
+### B10. Kafka consumer LLD (`ReferenceDataConsumers`, `ReferenceDataSync`)
+
+Consumers: bean `employeeEvents` (topic `hrms.employee.events.v1`) and `holidayEvents` (`hrms.holiday.events.v1`).
+
+```mermaid
+flowchart TD
+    M([Message arrives]) --> H[requiredHeader tenantId]
+    H -->|missing| X[/IllegalArgumentException: retried then DLQ/]
+    H --> RA["TenantContext.runAs(tenant): set BEFORE @Transactional call"]
+    RA --> P[parse payload, ignore unknown properties]
+    P --> V{valid? employeeId and occurredAt present}
+    V -->|no| X
+    V -->|yes| S{existing ref and event not newer than sourceUpdatedAt?}
+    S -->|yes| IGN[ignore stale event: out-of-order safe and idempotent]
+    S -->|no| U{event type}
+    U -->|EMPLOYEE_DELETED| D[ref.deactivate]
+    U -->|EMPLOYEE_UPSERTED| UP[ref.apply: userId, code, name, email, managerId, active]
+    D --> SV[employees.save]
+    UP --> SV
+    SV --> Q{became active, or new?}
+    Q -->|yes| PR[provisioner.provisionEmployee + setActive true]
+    Q -->|deactivated| DE["onDeactivated: setActive false,<br/>cancel pending requests, publish LEAVE_CANCELLED"]
+```
+This closes the earlier open question: consumers **are** idempotent and out-of-order safe for employees via
+the `occurredAt` versus `sourceUpdatedAt` check (holiday handler follows the same pattern **(verify)**).
+Failures: retry up to `max-attempts`, then dead-letter `error.<topic>.leave`.
+
+### B11. Security LLD (service side)
+
+`SecurityConfiguration` (blocking MVC): CSRF disabled, stateless sessions, `oauth2ResourceServer.jwt` with a custom
+authority converter.
+
+| Matcher | Rule |
+|---|---|
+| `/api/authenticate`, `/api/auth-info` | permitAll |
+| `/api/admin/**` | `ROLE_ADMIN` |
+| `/api/**` | authenticated |
+| `/v3/api-docs/**` | `ROLE_ADMIN` |
+| `/management/health`, `/health/**`, `/info`, `/prometheus` | permitAll |
+| `/management/**` | `ROLE_ADMIN` |
+
+JWT pipeline: `JwtDecoders.fromOidcIssuerLocation(issuerUri)` + validators (issuer + `AudienceValidator`) ->
+`SecurityUtils.extractAuthorityFromClaims` -> authorities -> principal name from `preferred_username`.
+Method security enabled, so `@PreAuthorize` works.
+
+### B12. Request lifecycle inside the service (call stack)
+
+```mermaid
+sequenceDiagram
+    participant GW as Gateway
+    participant F as Security filter chain
+    participant CL as TenantContextCleanupFilter
+    participant R as LeaveWorkflowResource
+    participant S as LeaveWorkflowService (tx)
+    participant H as Hibernate
+    participant DB as PostgreSQL
+    GW->>F: POST /api/leave-requests + Bearer JWT
+    F->>F: decode + validate JWT, build authorities
+    F->>R: authenticated request (@PreAuthorize ok)
+    R->>S: apply(cmd)
+    S->>H: begin tx (session opens: tenant resolved from JWT claim now)
+    H->>DB: select ... for update, insert ... tenant_id = ?
+    S-->>R: LeaveRequestView
+    R-->>GW: 200 JSON
+    F->>CL: after request
+    CL->>CL: TenantContext.clear()
+```
+
+### B13. Error handling LLD
+- `LeaveExceptions` provide `rule(...)` (business-rule violation, 4xx), `notFound(...)`, `conflict(...)` (409), `forbidden(...)`.
+- `web/rest/errors/ExceptionTranslator` converts them to problem-detail JSON.
+- `TenantNotResolvedException` for missing/ambiguous tenant (mapped to 403 or similar **(verify mapping)**).
+- Kafka side: exceptions in handlers trigger retry then DLQ, never lost silently.
+
+### B14. Configuration LLD (properties that matter)
+
+| Property | Default / example | Effect |
+|---|---|---|
+| `application.outbox.enabled` | true | turn publisher on/off |
+| `application.outbox.poll-interval` | `PT1S` | how often to drain |
+| `application.outbox.retention` | `P7D` | keep published rows this long |
+| `application.outbox.cleanup-cron` | `0 17 3 * * *` | daily purge time |
+| `spring.cloud.consul.discovery.service-name` | `leave` | registry name, URL segment `/services/leave` |
+| `spring.profiles.group.prod` | `kafka` | enables Kafka profile |
+| `management.endpoint.health.group.readiness.include` | `readinessState,db` | readiness includes DB |
+| `feign.circuitbreaker.enabled` | true | for any Feign client calls |
+| env `SPRING_DATASOURCE_URL`, `SPRING_LIQUIBASE_URL` | `jdbc:postgresql://leave-postgresql:5432/leave` | DB |
+| env `SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS` | `kafka:9092` | broker |
+| env `SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_OIDC_ISSUER_URI` | `http://keycloak:9080/realms/blute-hrms` | token validation |
+
+### B15. Test LLD
+
+| Test | Proves |
+|---|---|
+| `LeaveWorkflowIT` (19 tests) | apply / approve / reject / cancel rules end to end **(verify the scenario list)** |
+| `TenantIsolationIT` | rows invisible across tenants; root reads all; tenant-less writes rejected |
+| `RoleAccessIT` | employee, manager and anonymous rejected on admin CRUD |
+| `TenantIdentifierResolverTest` | claim parsing (list, map, string, multi-org error, reserved ids) |
+| `*ResourceIT` | REST behaviour with `@WithMockUser(authorities="ROLE_HR")` |
+| `ExceptionTranslatorIT` | error mapping |
+Recorded run: 64 tests, 0 failures (Java 21, Docker/Testcontainers).
+
+---
+
+## PART C: REUSABLE TEMPLATE (apply LLD to any service)
+
+### C1. The recipe
+
+```mermaid
+flowchart TD
+    A[1 Define aggregate and its states] --> B[2 Entities extend AbstractTenantAuditingEntity]
+    B --> C[3 Liquibase: tenant_id, audit, indexes, per-tenant uniques]
+    C --> D[4 Repositories incl. findXForUpdate for locked rows]
+    D --> E[5 Workflow service: @Transactional, rules, row locks]
+    E --> F[6 Publish events through OutboxService inside the same tx]
+    F --> G[7 Resources: class-level PreAuthorize, thin controllers]
+    G --> H[8 Consumers: header tenant, runAs, idempotent upsert, DLQ]
+    H --> I[9 Tests: isolation, role access, workflow IT]
+    I --> J[10 Register in CI matrix, compose, SPA folder]
+```
+
+### C2. Naming conventions
+- Event types: `<AGGREGATE>_<PAST_TENSE>` (`LEAVE_APPROVED`). Bindings: `<domain>Events-out-0`.
+- Topics: `<org>.<domain>.events.vN`. DLQ: `error.<topic>.<consumer-group>`.
+- Kafka key: `<tenantId>:<aggregateId>`. Headers: `tenantId`, `eventType`, `eventId`.
+- Local copies: `<Entity>Ref` with `sourceUpdatedAt` to drop stale events.
+- Row-lock repository methods: `findByIdForUpdate`, `findForUpdate(...)`.
+
+### C3. Template: workflow service skeleton
+
+```java
+@Service @Transactional
+class XWorkflowService {
+  XView apply(Cmd c) {
+    var me = currentUser.require();
+    lockParent(me);                 // serialise concurrent commands of same actor
+    validate(c);                    // dates, enums, existence
+    checkNoConflict(c);             // overlap / duplicate
+    checkQuota(c);                  // available = remaining - pending, with row lock
+    var x = repo.save(newEntity(c, initialStatus()));
+    events.publish(X_REQUESTED, x, me.getId(), null);   // OutboxService.record (MANDATORY tx)
+    return view(x);
+  }
+  XView decide(Long id, Action a, String remarks) {
+    var x = repo.findByIdForUpdate(id).orElseThrow(notFound());
+    authorise(x);                   // hide existence with 404, forbid self-approval
+    var stage = stageFor(x.status(), actor);
+    apply transition; deduct only at final stage; save approval row; events.publish(...)
+  }
+}
+```
+
+### C4. Template: consumer skeleton
+
+```java
+@Bean Consumer<Message<String>> fooEvents(FooSync sync, ObjectMapper m) {
+  var reader = m.readerFor(FooEvent.class).without(FAIL_ON_UNKNOWN_PROPERTIES);
+  return msg -> {
+    String tenant = requiredHeader(msg.getHeaders(), "tenantId");
+    String type   = requiredHeader(msg.getHeaders(), "eventType");
+    TenantContext.runAs(tenant, () -> sync.onFooEvent(type, reader.readValue(msg.getPayload())));
+  };
+}
+// FooSync.onFooEvent: validate, drop if event.occurredAt <= ref.sourceUpdatedAt, upsert, side effects
+```
+
+### C5. Definition of done for a new service
+- [ ] Every entity tenant-scoped; Liquibase has tenant_id + indexes + per-tenant uniques
+- [ ] Every Resource has `@PreAuthorize`; service rejects cross-user access with 404
+- [ ] Every state change + its event in one transaction via `OutboxService`
+- [ ] Every consumer takes tenant from header only, is idempotent, has DLQ
+- [ ] `TenantIsolationIT`, `RoleAccessIT`, workflow IT green
+- [ ] In compose, CI matrix, `ci-local.sh`, SPA routes
+- [ ] ADR updated if a new pattern was introduced
+
+
+---
+
+# PART 3: STRUCTURE, FUNCTIONS, CONNECTIONS, TECH STACK
+
+### 1. Tech stack
+
+#### 1.1 Summary
+
+```mermaid
+flowchart LR
+    subgraph FE[Frontend in gateway]
+        a1[Angular 22.1.6] --- a2[TypeScript 6.0.3] --- a3[Bootstrap 5.3.8 + ng-bootstrap 21]
+        a4[RxJS 7.8.2] --- a5[Vitest 4.1.11] --- a6[ESLint 10 + Prettier 3.9]
+    end
+    subgraph BE[Backend services]
+        b1[Java 21] --- b2[Spring Boot 4.1.1] --- b3[Spring Cloud 2025.1.3]
+        b4[JHipster framework 9.4.0] --- b5[Hibernate / JPA] --- b6[Liquibase]
+        b7[MapStruct 1.6.3] --- b8[springdoc OpenAPI 3.1.1] --- b9[Resilience4j circuit breaker]
+    end
+    subgraph PLAT[Platform]
+        p1[PostgreSQL 18.6] --- p2[Kafka 4.3.1 native] --- p3[Consul 2.0.4]
+        p4[Keycloak 26.7.4] --- p5[Mailpit 1.33.0] --- p6[consul-config-loader 0.4.1]
+    end
+    subgraph TOOL[Build and delivery]
+        t1[Maven wrapper] --- t2[Jib 3.5.2 image build] --- t3[Node v24.21.0 / npm 12.0.2 via frontend plugin]
+        t4[Docker Compose] --- t5[GitHub Actions] --- t6[Testcontainers + JUnit]
+    end
+```
+
+#### 1.2 Table: technology, role, where used
+
+| Layer | Technology | Version | Role | Used in |
+|---|---|---|---|---|
+| Language | Java | 21 (21-25 supported) | Backend language | all 5 services |
+| Framework | Spring Boot | 4.1.1 | App framework (parent POM) | all |
+| Framework | Spring Cloud | 2025.1.3 | Consul discovery/config, Stream, circuit breaker | all |
+| Framework | JHipster framework | 9.4.0 | Generated scaffolding, metrics, security helpers | all |
+| Web (gateway) | Spring Cloud Gateway (WebFlux, reactive) + R2DBC | per Boot | Edge, routing, non-blocking DB | gateway |
+| Web (services) | Spring MVC (starter-web, Tomcat) | per Boot | REST controllers | employee, leave, attendance, asset |
+| Persistence | Spring Data JPA + Hibernate (`@TenantId`) | per Boot | ORM, multi-tenancy | services |
+| Persistence | PostgreSQL driver / R2DBC driver | per Boot | DB access | services / gateway |
+| Migrations | Liquibase | per Boot | Schema as code (JDBC) | all |
+| Mapping | MapStruct | 1.6.3 | Entity to DTO | all |
+| Security | Spring Security: OAuth2 client (gateway), resource server (services) | per Boot | Login, JWT validation | all |
+| Messaging | Spring Cloud Stream + Kafka binder (`StreamBridge`, `Consumer<Message<String>>`) | 2025.1.3 | Events | services (+ gateway broker pkg) |
+| Resilience | Resilience4j via Spring Cloud CircuitBreaker, Feign | per cloud | Optional sync calls | services |
+| API docs | springdoc OpenAPI | 3.1.1 | Swagger (profile `api-docs`) | all |
+| Mail | spring-boot-starter-mail, Thymeleaf | per Boot | Emails/templates | services |
+| Frontend | Angular | 22.1.6 | SPA | gateway |
+| Frontend | TypeScript / RxJS | 6.0.3 / 7.8.2 | Language / reactive | gateway |
+| Frontend UI | Bootstrap + ng-bootstrap; custom `workspace/ui` components | 5.3.8 / 21.0.0 | Styling and widgets (workspace routes comment mentions Tailwind **(verify)**) | gateway |
+| Quality | ESLint 10.10.0, Prettier 3.9.6, Checkstyle, Sonar config | | Lint/format/static analysis | all |
+| Tests | JUnit 5, Spring test, Testcontainers, Vitest 4.1.11 | | Backend ITs, frontend unit | all |
+| Identity | Keycloak (Organizations feature) | 26.7.4-0 | IdP, tenants as organizations | platform |
+| Registry/config | Consul + consul-config-loader | 2.0.4 / 0.4.1 | Discovery, shared config | platform |
+| Broker | Apache Kafka (native image) | 4.3.1 | Event bus | platform |
+| Database | PostgreSQL | 18.6 | One instance per service | platform |
+| Dev mail | Mailpit | 1.33.0 | SMTP sink | platform |
+| Containers | Jib (images), Docker Compose | 3.5.2 | Build/run | all |
+| Observability | Actuator, Micrometer Prometheus; Prometheus/Grafana/Zipkin compose files per service | | Metrics, dashboards, tracing (files present, enablement **(verify)**) | all |
+| CI | GitHub Actions (this work), local `scripts/ci-local.sh` | | Build + test | repo root |
+
+---
+
+### 2. Repository structure (top level)
+
+```
+blute360-hrms/
+├── .yo-rc.json                     JHipster workspace config: appsFolders [gateway, employee, leave, attendance, asset]
+├── blute-hrms.jdl                  JDL: all applications and entities (generator input)
+├── README.md, TENANCY.md           project docs, tenancy rules
+├── docs/adr/                       0001..0002 architecture decision records
+├── .github/workflows/ci.yml        GitHub Actions CI (matrix per service)      [added]
+├── scripts/ci-local.sh             local CI + pre-push hook installer            [added]
+├── docker-compose/                 full stack
+│   ├── docker-compose.yml          infra + 5 services + 5 DBs
+│   ├── central-server-config/application.yml   shared config for Consul
+│   ├── realm-config/blute-hrms-realm.json      Keycloak realm import
+│   │   └── keycloak-health-check.sh
+│   ├── themes/blute-hrms/          Keycloak login theme
+│   ├── dev-seed.sh                 dev data seeding (what it creates: verify)
+│   └── README-DOCKER-COMPOSE.md
+├── gateway/        :8080   Spring Cloud Gateway + Angular
+├── employee/       :8081   people and organisation data
+├── leave/          :8082   leave workflow
+├── attendance/     :8083   attendance and WFH
+└── asset/          :8084   assets
+```
+
+---
+
+### 3. Per-backend-service structure (identical shape)
+
+Shown for `leave` (verified). `employee`, `attendance`, `asset` have the same skeleton with their own domain classes.
+
+```
+leave/
+├── pom.xml                         dependencies + build (Java 21, Boot parent, Jib, checkstyle, sonar)
+├── mvnw, mvnw.cmd                  Maven wrapper (no local Maven needed)
+├── package.json, package-lock.json JHipster tooling scripts only (no UI)
+├── checkstyle.xml, sonar-project.properties
+└── src/
+    ├── main/
+    │   ├── java/com/blute/hrms/leave/
+    │   │   ├── LeaveApp.java (main class)       [name: verify]
+    │   │   ├── config/        wiring: Security, Database, Liquibase, Web/CORS, Async, Clock, Logging,
+    │   │   │                  SpringDoc, ReferenceDataConsumers (Kafka)
+    │   │   ├── security/      AuthoritiesConstants, SecurityUtils, oauth2/AudienceValidator
+    │   │   ├── tenancy/       TenantContext, TenantIdentifierResolver, TenantContextCleanupFilter,
+    │   │   │                  TenantNotResolvedException
+    │   │   ├── domain/        entities + enumeration/ + AbstractTenantAuditingEntity + OutboxEvent
+    │   │   ├── repository/    Spring Data interfaces
+    │   │   ├── service/
+    │   │   │   ├── workflow/  LeaveWorkflowService + helpers (rules)
+    │   │   │   ├── events/    OutboxService, OutboxPublisher, EventBindings
+    │   │   │   ├── sync/      ReferenceDataSync, EmployeeEvent, HolidayEvent
+    │   │   │   ├── dto/, mapper/
+    │   │   │   └── LeaveTypeService, LeaveBalanceService, LeaveRequestService, LeaveApprovalService (CRUD)
+    │   │   ├── web/rest/      *Resource controllers + errors/ExceptionTranslator
+    │   │   ├── aop/logging/   LoggingAspect
+    │   │   └── broker/        (package placeholder)
+    │   ├── resources/
+    │   │   ├── config/        application.yml, -dev, -prod, -kafka, -secret-samples, -tls, bootstrap*.yml
+    │   │   ├── config/liquibase/{master.xml, changelog/*.xml}
+    │   │   ├── i18n/, templates/ (mail), static/
+    │   └── docker/            per-service dev compose: postgresql.yml, kafka.yml, consul.yml, keycloak.yml,
+    │                          monitoring.yml, prometheus/, grafana/, jib/entrypoint.sh, sonar.yml, zipkin.yml, ...
+    └── test/
+        ├── java/com/blute/hrms/leave/
+        │   ├── IntegrationTest.java (annotation), TechnicalStructureTest.java (ArchUnit-style rules **(verify)**)
+        │   ├── tenancy/ (TenantIsolationIT, TenantIdentifierResolverTest), web/rest/ (*ResourceIT, RoleAccessIT),
+        │   ├── service/, domain/, repository/, security/, config/, aop/
+        └── resources/ (config, i18n, META-INF)
+```
+
+#### 3.1 What lives where, per service (verified file lists)
+
+| Service | `domain` highlights | `web/rest` resources |
+|---|---|---|
+| employee | City, Company, Country, Employee, EmployeeAddress, EmployeeDocument, FinancialYear, Holiday, State, OutboxEvent | City, Company, Country, Employee, EmployeeAddress, EmployeeDocument, FinancialYear, Holiday, State, **HrPeopleResource**, **MyProfileResource** (+ `service/people`, `service/events`) |
+| leave | LeaveType, LeaveBalance, LeaveBalanceAdjustment, LeaveRequest, LeaveApproval, EmployeeRef, HolidayRef, OutboxEvent | **LeaveWorkflowResource**, ManagerLeaveResource, HrLeaveResource, LeaveTypeResource |
+| attendance | WorkType, BreakType, AttendanceRequestType, AttendanceRecord, AttendanceBreak, AttendanceRegularization, WfhRequest | MyAttendanceResource, ManagerAttendanceResource, HrAttendanceResource, AttendanceApprovalResource, WorkType, BreakType, AttendanceRequestType |
+| asset | AssetCategory, AssetSubCategory, AssetCondition, AssetMaintenanceType, AssetMaintenanceStatus, Asset, AssetAssignment, AssetMaintenance | one resource per entity |
+
+---
+
+### 4. Gateway structure
+
+```
+gateway/
+├── pom.xml (includes frontend-maven-plugin), mvnw, npmw, package.json, angular.json, tsconfig*.json
+├── eslint.config.ts, vitest-base.config.ts, ngsw-config.json (service worker), proxy.config.mjs (dev proxy)
+├── build-plugins/                  custom Angular build plugins
+└── src/main/
+    ├── java/com/blute/hrms/gateway/
+    │   ├── GatewayApp.java
+    │   ├── config/      SecurityConfiguration (reactive), WebConfigurer (CORS), DatabaseConfiguration (R2DBC),
+    │   │                LiquibaseConfiguration, DiscoveryRouteRefresher, ReactorConfiguration, Async, Logging
+    │   ├── security/    AuthoritiesConstants, SecurityUtils, oauth2/
+    │   ├── web/rest/    gateway-local endpoints (account, auth-info, route info ...)  [list: verify]
+    │   ├── web/filter/  SpaWebFilter, CookieCsrfFilter, etc. [exact names: verify]
+    │   ├── domain/, repository/, service/ (dto, mapper), broker/, aop/logging/
+    └── webapp/app/
+        ├── app.ts, app.config.ts, app.routes.ts, app-page-title-strategy.ts
+        ├── core/        auth (AccountService, userRouteAccessService), interceptor, request, util
+        ├── shared/      alert, auth, date, filter, jhipster, language, pagination, sort
+        ├── layouts/     main, navbar, footer, error, profiles
+        ├── home/, login/ (login.service.ts), admin/ (configuration, docs, gateway, health, logs, metrics)
+        ├── entities/    entity.routes.ts, admin/, user/, enumerations/,
+        │                employee/, leave/, attendance/, asset/   <- generated CRUD, one folder per entity:
+        │                  <entity>/{list,detail,update,delete,route,service}/ + .model.ts + .routes.ts + .test-samples.ts
+        └── workspace/   hand-built product UI
+            ├── workspace.routes.ts   lazy routes + hrOnly guard
+            ├── shell/                shell.ts / shell.html (full-screen layout, no JHipster navbar)
+            ├── data/                 leave-api.service.ts, attendance-api.service.ts, people-api.service.ts,
+            │                         *.models.ts, workspace-state.service.ts, format.ts
+            ├── pages/                dashboard, attendance, people (+ person), profile, apply-leave,
+            │                         my-requests, approvals, team
+            └── ui/                   kpi-card, balance-ring, status-pill, avatar, icon, toast-host + toast.service,
+                                      decision-dialog, person-form-dialog, attendance-request-dialog
+```
+
+Frontend pattern: a page component calls a typed API service in `workspace/data/` (e.g. `leave-api.service.ts`, base
+`/services/leave/api`), which uses Angular `HttpClient`; the HTTP interceptors in `core/` add the CSRF header; the gateway does the rest.
+Route guards: `userRouteAccessService` (logged in), `hrOnly` (ROLE_HR or ROLE_SUPER_ADMIN, UX only; APIs enforce it).
+
+---
+
+### 5. Key functions and where they live
+
+#### 5.1 Backend (leave, verified signatures)
+
+| Function | Class | What it does |
+|---|---|---|
+| `apply(ApplyLeave)` | `LeaveWorkflowService` | Validate, lock, check overlap/balance, save request, emit `LEAVE_REQUESTED` |
+| `cancel(Long)` | same | Owner cancels pending request, emit `LEAVE_CANCELLED` |
+| `approve(Long, String)` / `reject(Long, String)` | same | Both call private `decide(...)`: stage logic, deduct at final approval, save `LeaveApproval`, emit event |
+| `myRequests`, `myBalances`, `activeLeaveTypes`, `workingDays`, `get`, `history` | same | Employee read models |
+| `managerQueue`, `myDecisions`, `myTeam`, `teamCalendar`, `teamAvailability` | same | Manager views |
+| `hrSearch`, `balancesOfEmployee`, `adjustBalance` | same | HR views and balance correction |
+| `publish(eventType, request, actorId, remarks)` | `LeaveEventPublisher` | Build `LeaveEvent`, hand to outbox |
+| `record(binding, aggregateId, eventType, payload)` | `OutboxService` | Write `OutboxEvent` (tx MANDATORY, tenant required) |
+| `publishPending()` / `publishBatch()` | `OutboxPublisher` | Scheduled drain: send via `StreamBridge`, mark published/failed |
+| `cleanupPublished()` | `OutboxPublisher` | Daily purge of old published rows |
+| `employeeEvents`, `holidayEvents` (beans) | `ReferenceDataConsumers` | Kafka consumers: require `tenantId` header, `runAs`, delegate |
+| `onEmployeeEvent`, `onHolidayEvent` | `ReferenceDataSync` | Upsert refs; ignore stale; provision balances; cancel on deactivation |
+| `currentTenant()`, `extractTenant(claims)` | `TenantIdentifierResolver` | Resolve tenant for Hibernate |
+| `runAs`, `callAs`, `set`, `get`, `clear` | `TenantContext` | Explicit tenant for non-HTTP code |
+| `requireTenant()` | `AbstractTenantAuditingEntity` | Block writes without a tenant |
+| `filterChain`, `authenticationConverter`, `jwtDecoder` | `SecurityConfiguration` | Resource-server security |
+
+#### 5.2 Gateway (reactive)
+`springSecurityFilterChain` (CSRF cookie, CSP, OAuth2 login, path rules), discovery route locator (`/services/<id>/**`,
+`StripPrefix=2`, `TokenRelay`), `DiscoveryRouteRefresher` (refresh routes on instance changes), `SpaWebFilter` (index.html fallback).
+
+#### 5.3 Frontend
+`AccountService.identity()` (current user + authorities), `userRouteAccessService`, `hrOnly` guard, `LeaveApiService` /
+`AttendanceApiService` / `PeopleApiService` (typed REST clients), `WorkspaceStateService` (shared UI state),
+`ToastService` (notifications).
+
+---
+
+### 6. How the services are connected
+
+#### 6.1 Connection matrix (who talks to whom, and how)
+
+| From | To | How | Address / config | Carries |
+|---|---|---|---|---|
+| Browser | Gateway | HTTPS | public host :8080 | session cookie, `X-XSRF-TOKEN` |
+| Gateway | Keycloak | OIDC (browser redirects + back-channel code exchange) | issuer `http://keycloak:9080/realms/blute-hrms` | auth code, tokens |
+| Gateway | Services | HTTP via discovery | `lb://<service>` from Consul, path `/services/<svc>/**` | `Authorization: Bearer <JWT>` |
+| Services | Keycloak | HTTPS/HTTP GET (JWKS, issuer metadata) | same issuer URI | public keys only |
+| Every app | Consul | HTTP | `SPRING_CLOUD_CONSUL_HOST=consul`, `:8500` | registration, health checks, shared config |
+| Each service | Own PostgreSQL | JDBC | `jdbc:postgresql://<svc>-postgresql:5432/<svc>` | SQL (gateway: R2DBC) |
+| Services | Kafka | Kafka protocol | `kafka:9092` | events, headers `tenantId`, `eventType`, `eventId` |
+| Service to service | Direct HTTP | Rare, Feign + circuit breaker (**verify usage**) | via Consul | service token (`internal` client) |
+| consul-config-loader | Consul | one-shot HTTP | reads `central-server-config/application.yml` | shared config |
+
+#### 6.2 Network and ports
+
+```mermaid
+flowchart LR
+    host[Host / Internet] -->|8080| gw[gateway]
+    host -->|9080, 9443| kc[keycloak]
+    host -->|8500, 8300, 8600| consul[consul]
+    subgraph net[Compose network: names resolve as DNS]
+        gw --> emp[employee 8081]
+        gw --> lv[leave 8082]
+        gw --> att[attendance 8083]
+        gw --> ast[asset 8084]
+        emp & lv & att & ast & gw --> kc
+        emp & lv & att & ast & gw --> consul
+        emp & lv & att & ast <--> kf[[kafka 9092 internal]]
+        emp --> edb[(employee-postgresql 5432)]
+        lv --> ldb[(leave-postgresql 5432)]
+        att --> adb[(attendance-postgresql 5432)]
+        ast --> sdb[(asset-postgresql 5432)]
+        gw --> gdb[(gateway-postgresql 5432)]
+    end
+```
+Published to host: 8080 (gateway), 9080/9443 (Keycloak), 8300/8500/8600 (Consul). Kafka 9092 is internal unless uncommented. DB ports are internal.
+
+#### 6.3 Frontend to backend (concrete example)
+
+```mermaid
+sequenceDiagram
+    participant P as Page (apply-leave)
+    participant A as LeaveApiService
+    participant I as HTTP interceptors
+    participant G as Gateway
+    participant L as leave service
+    P->>A: submit(ApplyLeave)
+    A->>I: POST /services/leave/api/leave-requests
+    I->>G: + Cookie SESSION + X-XSRF-TOKEN
+    G->>L: POST /api/leave-requests + Bearer JWT (StripPrefix=2, TokenRelay)
+    L-->>G: 200 LeaveRequestView
+    G-->>A: 200
+    A-->>P: update UI (toast, list refresh)
+```
+
+#### 6.4 Backend to backend (events, concrete example)
+
+```mermaid
+sequenceDiagram
+    participant HR as HR user (UI)
+    participant E as employee service
+    participant K as Kafka
+    participant L as leave service
+    HR->>E: create/update employee (via gateway)
+    E->>E: save Employee + OutboxEvent (one tx)
+    E->>K: hrms.employee.events.v1 (EMPLOYEE_UPSERTED), header tenantId
+    K->>L: deliver
+    L->>L: runAs(tenantId); upsert EmployeeRef; provision leave balances
+    Note over L: Later "apply leave" uses EmployeeRef locally,<br/>with no call to the employee service.
+```
+
+#### 6.5 Startup dependency order
+
+```mermaid
+flowchart LR
+    pg[(PostgreSQL x5, healthy)] --> kc[Keycloak healthy]
+    kc --> cs[Consul]
+    cs --> cl[config loader]
+    cl --> kf[[Kafka]]
+    kf --> sv[employee, leave, attendance, asset: health UP]
+    sv --> gw[gateway]
+```
+`depends_on` in compose enforces: each service waits for its own DB and Keycloak; health check polls `/management/health` for `"status":"UP"` (interval 5s, retries 40).
+
+---
+
+### 7. Where to change what (quick map)
+
+| I want to... | Edit here |
+|---|---|
+| Add an entity/field | `blute-hrms.jdl` -> generate; `<svc>/domain`, new Liquibase changelog, DTO/mapper, Resource |
+| Add a business rule | `<svc>/service/workflow/*Service` (+ IT test) |
+| Add an endpoint | `<svc>/web/rest/*Resource` with `@PreAuthorize` |
+| Publish a new event | `EventBindings` constant + `LeaveEventPublisher.publish` style call inside the tx |
+| Consume an event | `config/ReferenceDataConsumers` bean + `service/sync` handler |
+| Change who can do what | `@PreAuthorize` + role claims in Keycloak realm JSON |
+| Add a screen | `gateway/.../workspace/pages/<name>` + route in `workspace.routes.ts` + API service in `workspace/data/` |
+| Add a service | JDL, compose, tenancy classes, CI matrix, SPA folder (see section 16) |
+| Change a port/URL/secret | compose env vars; never commit real secrets |
+| Change CI | `.github/workflows/ci.yml`, `scripts/ci-local.sh` |
