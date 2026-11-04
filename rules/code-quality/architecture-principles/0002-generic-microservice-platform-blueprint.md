@@ -626,7 +626,7 @@ sequenceDiagram
     C-->>G: [10.0.0.5:8081, ...]
     G->>S: POST /api/things (StripPrefix=2)<br/>Authorization: Bearer JWT (TokenRelay)
     S->>S: validate JWT (issuer, audience, signature)
-    S->>S: map claims to ROLE_*; @PreAuthorize
+    S->>S: map claims to ROLE_* (PreAuthorize check)
     S->>S: TenantIdentifierResolver reads organization claim
     S->>D: INSERT ... tenant_id = tenant (added by Hibernate)
     D-->>S: ok
@@ -641,7 +641,7 @@ sequenceDiagram
     autonumber
     participant API as Producer service (request thread)
     participant DB as Producer DB
-    participant OP as OutboxPublisher (@Scheduled 1s)
+    participant OP as OutboxPublisher (Scheduled 1s)
     participant K as Kafka topic org.domain.events.v1
     participant CN as Consumer service (Consumer bean)
     participant CDB as Consumer DB
@@ -964,7 +964,7 @@ Resources contain no business rules; services do. Only services touch repositori
 classDiagram
     class AbstractTenantAuditingEntity {
         <<abstract>>
-        -String tenantId  @TenantId, no setter
+        -String tenantId  TenantId annotation, no setter
         -String createdBy
         -Instant createdDate
         -String lastModifiedBy
@@ -1224,7 +1224,7 @@ stateDiagram-v2
 
 ```mermaid
 sequenceDiagram
-    participant WS as LeaveWorkflowService (@Transactional)
+    participant WS as LeaveWorkflowService (Transactional)
     participant EP as LeaveEventPublisher
     participant OS as OutboxService
     participant DB as outbox_event
@@ -1233,9 +1233,9 @@ sequenceDiagram
     participant K as Kafka
     WS->>EP: publish(eventType, request, actorId, remarks)
     EP->>OS: record(binding, aggregateId, eventType, payload)
-    Note over OS: @Transactional(MANDATORY) so it joins the caller's tx.<br/>Tenant from TenantIdentifierResolver, else exception.
+    Note over OS: Transactional(MANDATORY) so it joins the caller's tx.<br/>Tenant from TenantIdentifierResolver, else exception.
     OS->>DB: save OutboxEvent(tenant, binding, aggregateId, type, json, now)
-    loop @Scheduled fixedDelay = application.outbox.poll-interval (PT1S)
+    loop Scheduled fixedDelay = application.outbox.poll-interval (PT1S)
         PUB->>DB: lockNextBatch(100) in a transaction
         loop each event in batch
             PUB->>SB: send(binding, Message)
@@ -1272,7 +1272,7 @@ Consumers: bean `employeeEvents` (topic `hrms.employee.events.v1`) and `holidayE
 flowchart TD
     M([Message arrives]) --> H[requiredHeader tenantId]
     H -->|missing| X[/IllegalArgumentException: retried then DLQ/]
-    H --> RA["TenantContext.runAs(tenant): set BEFORE @Transactional call"]
+    H --> RA["TenantContext.runAs(tenant): set BEFORE Transactional call"]
     RA --> P[parse payload, ignore unknown properties]
     P --> V{valid? employeeId and occurredAt present}
     V -->|no| X
@@ -1322,7 +1322,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     GW->>F: POST /api/leave-requests + Bearer JWT
     F->>F: decode + validate JWT, build authorities
-    F->>R: authenticated request (@PreAuthorize ok)
+    F->>R: authenticated request (PreAuthorize check passed)
     R->>S: apply(cmd)
     S->>H: begin tx (session opens: tenant resolved from JWT claim now)
     H->>DB: select ... for update, insert ... tenant_id = ?
@@ -1377,7 +1377,7 @@ flowchart TD
     A[1 Define aggregate and its states] --> B[2 Entities extend AbstractTenantAuditingEntity]
     B --> C[3 Liquibase: tenant_id, audit, indexes, per-tenant uniques]
     C --> D[4 Repositories incl. findXForUpdate for locked rows]
-    D --> E[5 Workflow service: @Transactional, rules, row locks]
+    D --> E[5 Workflow service: Transactional, rules, row locks]
     E --> F[6 Publish events through OutboxService inside the same tx]
     F --> G[7 Resources: class-level PreAuthorize, thin controllers]
     G --> H[8 Consumers: header tenant, runAs, idempotent upsert, DLQ]
