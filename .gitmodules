@@ -4,3 +4,6 @@
 [submodule "gcd"]
 	path = gcd
 	url = https://github.com/Scaibu/gcd.git
+[submodule "rag-pipeline"]
+	path = rag-pipeline
+	url = https://github.com/Chief-Strategist-J/rag-pipeline.git
