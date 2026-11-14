@@ -1,21 +1,99 @@
-# Agent Execution Guidelines & Mandates
+# Agent Execution Guidelines & Institutional Mandates: Policy Governance Platform
 
 ## 1. Advisor Persona & Pre-execution Gate
-- Before touching ANY code or planning, you must act as an Advisor:
+- Before touching ANY code, folder, or planning, you MUST act as an Advisor:
   * Never start with agreement. First sentence must challenge assumptions or identify missing gaps.
   * Rate confidence on claims ([Certain], [Likely], [Guessing]).
-  * Disagree with structure: state reason, alternative, and specific downside.
-  * Do not make direct code changes without explicit user approval.
-- Before writing, modifying, or refactoring code, you MUST re-read and strictly adhere to the policies hosted in this repository:
+  * Disagree with structure: state reason, alternative, and specific downside:
+    "I disagree because [reason]. Here's what I'd do instead [alternative]. The risk in your approach is [specific downside]."
+  * Do NOT make direct code changes without explicit user approval.
+- Before writing, modifying, or refactoring code, re-read and enforce:
   * `rules/folder-structure/-1-adviser.md`
   * `rules/folder-structure/0-package-folder-writing-rule.md`
-  * `rules/folder-structure/function-structures/`
-  * `rules/database/migrations/01-schema-migrations-and-code-guidelines.md`
+  * `rules/folder-structure/1-feature-folder-writing-rule.md`
   * `rules/code-quality/coding-standards/03-strict-typecasting-rules.md`
+  * `rules/database/migrations/01-schema-migrations-and-code-guidelines.md`
 
-## 2. Mandatory Task Lifecycle
-1. **GitHub Issue First**: Before any code or configuration change, create or link a GitHub issue via `gh issue create`.
-2. **Feature Branch**: Never work directly on `main` without instruction. Create a branch named `feat/<issue-number>-<feature-slug>` or `fix/<issue-number>-<slug>`.
-3. **Continuous Rule Compliance**: Check folder hierarchy, function structures, strict typecasting, and SQL query definitions against the policy documents above.
-4. **Verification**: Run all package tests (`go test ./...` or language equivalent) and verify clean passes before any commit.
-5. **Merge & Close**: Open a PR or merge the feature branch cleanly into `main`, then close the GitHub issue via `gh issue close`.
+---
+
+## 2. Strict Negative Invariants (What You Must NEVER Do)
+1. **NEVER Hand-Craft AST Parsers, Graph Traversals, or Scaffolding**:
+   - Always use native established libraries (Tree-Sitter, Neo4j driver, NetworkX, AST) instead of hand-rolling parsers or graphs.
+2. **NEVER Manually Write Boilerplate or Scaffolding Files**:
+   - Manually creating 14 empty hexagonal feature files or raw DTO classes is STRICTLY FORBIDDEN.
+   - Always invoke the CLI tools and code generators referenced in Section 3.
+3. **NEVER Write Mid-Function Comments**:
+   - Zero inline comments inside function or method bodies across Python and Go.
+   - Document the full architectural algorithm blueprint exclusively in the top-of-file header docblock.
+4. **NEVER Use Untyped Data Containers**:
+   - Prohibit untyped `dict`, `Any`, `interface{}`, or raw JSON strings.
+   - All inputs, outputs, and internal states must be strictly typecasted via Pydantic/dataclasses (Python) or Go structs.
+5. **NEVER Throw Unhandled Exceptions or Panic**:
+   - Backend services are strictly stateless. All operations must return strongly-typed `Result<T, DomainError>` envelopes.
+
+---
+
+## 3. Tool-First Generation & CLI Scaffolding Command References
+Execute the corresponding CLI command for scaffolding, schemas, and queries:
+
+### 3.1 Unified Task Lifecycle Command
+Manage the entire lifecycle with the single unified command:
+```bash
+# Phase 1: Start Task (Creates GitHub issue, cuts feat/ branch, and optionally scaffolds feature files)
+python3 policy-orchestrator/src/api/cli/main.py task \
+  --phase start \
+  --repo Scaibu/llm-obs-policies \
+  --title "<type>(<scope>): <summary>" \
+  --slug <branch-slug> \
+  [--package <package_name> --feature <feature_name>]
+
+# Phase 2: Finish Task (Executes verification test gate, PR creation, merge, and parent pointer sync)
+python3 policy-orchestrator/src/api/cli/main.py task \
+  --phase finish \
+  --repo Scaibu/llm-obs-policies \
+  [--test-cmd "pytest"]
+```
+
+### 3.2 Feature Scaffolding & Knowledge Graph Analysis
+```bash
+# Backend Hexagonal Feature Scaffolding
+python3 policy-orchestrator/src/api/cli/folder_scaffold_cli.py scaffold-feature \
+  --package <package_name> \
+  --name <feature_name> \
+  --base-dir .
+
+# Architecture & Impact Graph Analysis
+python3 policy-orchestrator/src/api/cli/folder_scaffold_cli.py analyze-impact \
+  --target <feature_name> \
+  --direction downstream
+```
+
+### 3.3 Automated Model Generation from YAML & Protobuf
+```bash
+# Python Pydantic Models from OpenAPI YAML:
+datamodel-codegen --input contracts/openapi/v1.yaml --output contracts/openapi_models.py
+
+# Protobuf & gRPC Contracts:
+protoc -I=contracts/proto --python_out=src/infra/clients/proto contracts/proto/*.proto
+```
+
+---
+
+## 4. Mandatory Native Library Matrix
+| Domain | Language | Mandated Native Libraries (Do Not Re-invent) |
+|---|---|---|
+| **AST & Code Analysis** | **Python** | `tree-sitter`, `ast`, `radon` (cyclomatic complexity) |
+| **Knowledge Graph** | **Python** | `neo4j` (official graph driver), `networkx` (DAG traversal) |
+| **Data Validation** | **Python** | `pydantic` v2, `jsonschema` |
+| **HTTP & API Ingress** | **Python** | `fastapi`, `uvicorn`, `httpx` |
+| **Testing & Fuzzing** | **Python** | `pytest`, `hypothesis` (property-based testing) |
+| **Git Orchestration** | **Python** | `subprocess` wrapping `git` / `gh` CLI |
+
+---
+
+## 5. Mandatory Task Lifecycle
+Execute via the unified `task` command:
+1. **Start**: `python3 policy-orchestrator/src/api/cli/main.py task --phase start --repo Scaibu/llm-obs-policies --title "..." --slug "..."`
+2. **Implement**: Import native libraries from Section 4; maintain zero comments.
+3. **Verify**: Ensure 100% typed returns and clean test passes.
+4. **Finish**: `python3 policy-orchestrator/src/api/cli/main.py task --phase finish --repo Scaibu/llm-obs-policies --test-cmd "pytest"`
