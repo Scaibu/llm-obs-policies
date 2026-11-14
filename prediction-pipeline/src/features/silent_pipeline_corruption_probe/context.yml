@@ -1,0 +1,2 @@
+feature: silent_pipeline_corruption_probe
+mode: stateless_hexagonal

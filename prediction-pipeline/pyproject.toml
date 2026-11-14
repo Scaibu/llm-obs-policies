@@ -1,0 +1,3 @@
+[project]
+name = "prediction-pipeline"
+version = "1.0.0"

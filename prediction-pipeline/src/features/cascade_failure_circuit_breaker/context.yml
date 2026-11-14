@@ -1,0 +1,2 @@
+feature: cascade_failure_circuit_breaker
+mode: stateless_hexagonal

@@ -1,0 +1,2 @@
+feature: training_serving_skew_audit
+mode: stateless_hexagonal

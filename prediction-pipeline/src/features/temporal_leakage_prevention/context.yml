@@ -1,0 +1,2 @@
+feature: temporal_leakage_prevention
+mode: stateless_hexagonal

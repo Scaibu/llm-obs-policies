@@ -1,0 +1,2 @@
+feature: regression_to_mean_adjuster
+mode: stateless_hexagonal

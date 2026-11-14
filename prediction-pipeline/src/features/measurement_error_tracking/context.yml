@@ -1,0 +1,2 @@
+feature: measurement_error_tracking
+mode: stateless_hexagonal
