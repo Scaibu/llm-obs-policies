@@ -1,0 +1,2 @@
+feature: concept_drift_monitoring
+mode: stateless_hexagonal

@@ -1,0 +1,2 @@
+feature: covariate_shift_detection
+mode: stateless_hexagonal

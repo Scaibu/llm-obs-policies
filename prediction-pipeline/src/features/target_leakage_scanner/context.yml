@@ -1,0 +1,2 @@
+feature: target_leakage_scanner
+mode: stateless_hexagonal
