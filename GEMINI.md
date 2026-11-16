@@ -19,17 +19,17 @@
 ### 1.1 Mandatory 'read rule' Trigger Protocol
 Whenever the user states `"read rule"`, `"read rules"`, or explicitly demands policy re-reading:
 1. **Immediate Execution Freeze**: Halt all planning, code generation, and file editing immediately. You are STRICTLY FORBIDDEN from relying on cached memory or prior conversation context.
-2. **Mandatory Disk Re-Reading Gate**: You MUST issue explicit `read_file` calls to reload:
+2. **Mandatory Disk Re-Reading Gate**: You MUST dynamically discover `$POLICY_ROOT` via Section 1.0 and issue explicit `read_file` calls to reload:
    - All 9 **Core Quality Baseline** rule files:
-     * `rules/code-quality/coding-standards/05-enforced-constraints.md`
-     * `rules/code-quality/coding-standards/06-writing-conditions.md`
-     * `rules/code-quality/coding-standards/07-writing-loops.md`
-     * `rules/code-quality/coding-standards/08-writing-types-data-model.md`
-     * `rules/code-quality/coding-standards/coupling-taxonomy.md`
-     * `rules/code-quality/coding-standards/performance-engineering.md`
-     * `rules/code-quality/coding-standards/runtime-adaptor-pattern.md`
-     * `rules/folder-structure/4-functions-and-classes-writing-rule.md`
-     * `rules/folder-structure/3.shared.code.writing.rule.md`
+     * `$POLICY_ROOT/rules/code-quality/coding-standards/05-enforced-constraints.md`
+     * `$POLICY_ROOT/rules/code-quality/coding-standards/06-writing-conditions.md`
+     * `$POLICY_ROOT/rules/code-quality/coding-standards/07-writing-loops.md`
+     * `$POLICY_ROOT/rules/code-quality/coding-standards/08-writing-types-data-model.md`
+     * `$POLICY_ROOT/rules/code-quality/coding-standards/coupling-taxonomy.md`
+     * `$POLICY_ROOT/rules/code-quality/coding-standards/performance-engineering.md`
+     * `$POLICY_ROOT/rules/code-quality/coding-standards/runtime-adaptor-pattern.md`
+     * `$POLICY_ROOT/rules/folder-structure/4-functions-and-classes-writing-rule.md`
+     * `$POLICY_ROOT/rules/folder-structure/3.shared.code.writing.rule.md`
    - All mapped rule files for the active engineering category from **Section 6 (Use-Case-Driven Rule Retrieval Matrix)**.
 3. **Pre-Execution Attestation & Audit Output**: Before resuming execution, output an attestation confirming:
    - [ ] Native Library Mandate verified (no hand-rolled algorithms, parsers, or numerical routines).
@@ -60,10 +60,10 @@ Whenever the user states `"read rule"`, `"read rules"`, or explicitly demands po
 Execute the corresponding CLI command for scaffolding, schemas, and queries:
 
 ### 3.1 Unified Task Lifecycle Command
-Manage the entire lifecycle with the single unified command:
+Manage the entire lifecycle with the single unified command (resolving `$POLICY_ROOT` via Section 1.0):
 ```bash
 # Phase 1: Start Task (Creates GitHub issue, cuts feat/ branch, and optionally scaffolds feature files)
-python3 policy-orchestrator/src/api/cli/main.py task \
+python3 $POLICY_ROOT/policy-orchestrator/src/api/cli/main.py task \
   --phase start \
   --repo Scaibu/llm-obs-policies \
   --title "<type>(<scope>): <summary>" \
@@ -71,7 +71,7 @@ python3 policy-orchestrator/src/api/cli/main.py task \
   [--package <package_name> --feature <feature_name>]
 
 # Phase 2: Finish Task (Executes verification test gate, PR creation, merge, and parent pointer sync)
-python3 policy-orchestrator/src/api/cli/main.py task \
+python3 $POLICY_ROOT/policy-orchestrator/src/api/cli/main.py task \
   --phase finish \
   --repo Scaibu/llm-obs-policies \
   [--test-cmd "pytest"]
@@ -115,11 +115,11 @@ protoc -I=contracts/proto --python_out=src/infra/clients/proto contracts/proto/*
 ---
 
 ## 5. Mandatory Task Lifecycle
-Execute via the unified `task` command:
-1. **Start**: `python3 policy-orchestrator/src/api/cli/main.py task --phase start --repo Scaibu/llm-obs-policies --title "..." --slug "..."`
+Execute via the unified `task` command (resolving `$POLICY_ROOT` via Section 1.0):
+1. **Start**: `python3 $POLICY_ROOT/policy-orchestrator/src/api/cli/main.py task --phase start --repo Scaibu/llm-obs-policies --title "..." --slug "..."`
 2. **Implement**: Check Section 4 for native libraries and Section 6 for domain-specific rules before writing any logic; maintain zero comments.
 3. **Verify**: Ensure 100% typed returns and clean test passes.
-4. **Finish**: `python3 policy-orchestrator/src/api/cli/main.py task --phase finish --repo Scaibu/llm-obs-policies --test-cmd "pytest"`
+4. **Finish**: `python3 $POLICY_ROOT/policy-orchestrator/src/api/cli/main.py task --phase finish --repo Scaibu/llm-obs-policies --test-cmd "pytest"`
 
 ---
 
