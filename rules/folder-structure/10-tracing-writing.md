@@ -36,6 +36,10 @@ These are absolute prohibitions. Systems, AI agents, code generators, and softwa
    String formatting such as `"Handling request trace=" + id` is strictly banned. Trace identifiers, Span identifiers, and Tenant identifiers must reside in dedicated top-level JSON fields or structured metadata keys.
 8. **NEVER Log Unsanitized PII, Raw Credentials, or High-Entropy Secrets:**  
    Passwords, API keys, JWT signatures, authorization bearer tokens, credit card numbers, and cryptographic private keys must NEVER appear in trace attributes or log payloads. Mask or drop sensitive fields at the boundary.
+9. **NEVER Collapse Multi-Step Workflows into a Single Flat Span:**  
+   Emitting only a single coarse root span for an entire orchestration flow is strictly prohibited. Every discrete phase (input/schema validation, mutation evaluation, quota verification, admission gate checks, workflow DAG steps, state machine transitions, downstream I/O writes, and manifest rendering) MUST create its own dedicated, named child span nested under the active transaction context.
+10. **NEVER Leave Error Branches Untraced on the Immediate Child Span:**  
+   Catching or returning an error at an internal step without recording `RecordError` directly on that step's active child span before bubbling to the root orchestrator is prohibited. Every error path MUST be stamped immediately at the point of origin with error attributes (`error.type`, `error.message`) and status `ERROR`.
 
 ---
 
