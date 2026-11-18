@@ -4,7 +4,6 @@ trigger: "ON_REFERENCE | ON_SCHEMA_CHANGE | ON_MIGRATION | ON_INGRESS_CHANGE"
 scope: "Tables, columns, constraints, migrations, ingress validation, integrity checks"
 mode: "Strict. Reject, never repair."
 contract_version: "1.0"
-assumed_engine: "PostgreSQL 14+"
 ---
 
 # Data Contract
