@@ -334,3 +334,57 @@ Before committing or deploying, execute the following validation gates:
      --data-urlencode 'q={nestedSetParent<0 && true && resource.service.name != nil} | rate() by(resource.service.name)' \
      "http://localhost:3000/api/datasources/proxy/uid/tempo/api/search" | jq '.metrics'
    ```
+
+# PART IX: PORT-FORWARDING SUPERVISOR ARCHITECTURE & PERSISTENCE CONTRACT
+
+## 1. Why Port-Forwards Fail and Drop (`The "Temporary Port-Forward" Anti-Pattern`)
+
+Using ad-hoc shell commands (`kubectl port-forward ... &`) or storing supervision scripts in ephemeral locations (`/tmp/`) creates severe operational risks:
+1. **OS Cleanup Eviction**: Systemd and Linux distributions periodically purge files in `/tmp` via `systemd-tmpfiles-clean` or on reboot. Scripts and pidfiles placed in `/tmp` disappear without warning.
+2. **Silent Connection Drops**: Native `kubectl port-forward` terminates whenever:
+   - Pods are recycled or rescheduled during rollouts or OOM kills.
+   - Idling TCP socket timeouts expire.
+   - Subshell parent terminals exit, sending `SIGHUP` to unparented background jobs.
+3. **Ghost Port Collisions**: When a dropped forwarder leaves orphan sockets in `TIME_WAIT` or another container binds the host port, restarting `kubectl port-forward` fails with `unable to create listener: address already in use`.
+
+## 2. Institutional Standard: Dedicated Production Supervisor (`scripts/run/port-forward.sh`)
+
+All port forwarders must be managed by the standardized supervisor script located in the repository at `scripts/run/port-forward.sh`. Storing forwarding scripts or daemon state in `/tmp` is strictly forbidden.
+
+### Architecture Specifications:
+- **Persistent State Directory**: All runtime PIDs and logs must reside in the persistent user directory `${HOME}/.local/share/idp-platform/`:
+  - Supervisor PID file: `${HOME}/.local/share/idp-platform/port-forward.pid`
+  - Service-specific log directory: `${HOME}/.local/share/idp-platform/logs/<service>.log`
+- **Reconciliation Loop**:
+  The supervisor runs an active heartbeat loop (every 3 seconds), checking socket binding status via `ss -tlpn`. If any target port drops, the supervisor automatically respawns the forwarder for that specific service.
+- **Dynamic Pod & Service Abstraction**:
+  Port-forwarding targets Kubernetes `Services` (`svc/<name>`), never ephemeral pod names (`pod/<hash>`). This ensures that rolling restarts or pod replacements are transparently reconnected.
+
+### Port Allocation & Targets Matrix:
+
+| Service | Target Resource | Local Port | Remote Port | Namespace | Purpose |
+|---|---|---|---|---|---|
+| **argocd** | `svc/argocd-server` | `8085` | `443` | `argocd` | ArgoCD Web UI & GitOps Dashboard |
+| **grafana** | `svc/grafana` | `3000` | `3000` | `dev` | Grafana Dashboards & Traces Drilldown |
+| **platform-api** | `svc/platform-api` | `8080` | `8080` | `dev` | REST API, Healthz, Service Catalog |
+| **otel-collector**| `svc/otel-collector` | `4318` | `4318` | `dev` | OpenTelemetry OTLP HTTP trace/metrics ingestion |
+| **tempo** | `svc/tempo` | `3200` | `3200` | `dev` | Direct TraceQL search & query endpoint |
+| **postgres** | `svc/postgres` | `5432` | `5432` | `dev` | Direct database psql / DBM access |
+| **redis** | `svc/redis` | `6379` | `6379` | `dev` | Redis cache & session store |
+
+### Execution Commands:
+```bash
+./scripts/run/port-forward.sh start     # Starts supervisor and establishes all forwards
+./scripts/run/port-forward.sh status    # Displays active binding status and supervisor PID
+./scripts/run/port-forward.sh stop      # Terminates supervisor and all child forwarders cleanly
+./scripts/run/port-forward.sh restart   # Re-cycles all connections and clears stale sockets
+```
+
+## 3. Strict Operating Invariants for Developers & AI Agents
+
+1. **NEVER Place Forwarding Scripts in `/tmp`**:
+   Scripts in `/tmp` are treated as unmanaged technical debt. All scripts must be version-controlled in `scripts/run/`.
+2. **NEVER Invoke Raw Unsupervised `kubectl port-forward`**:
+   Raw background commands die silently. Always use `./scripts/run/port-forward.sh start`.
+3. **NEVER Target Ephemeral Pod Hashes**:
+   Always port-forward to `svc/<name>`, never `pod/<name>`.
