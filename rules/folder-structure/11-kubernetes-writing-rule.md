@@ -1,20 +1,20 @@
 ---
-agent_role: "Kubernetes Platform Architecture, Shell Automation, Tracing & Database Enforcer"
-trigger: "ON_REFERENCE | ON_CONTEXT_LOAD | ON_K8S_MANIFEST_CREATION | ON_SCRIPT_CREATION | ON_DB_CONFIG"
-scope: "Production Kubernetes Manifests, Kustomize Overlays, ArgoCD GitOps, Shell Script Architecture, Distributed Tracing & Tempo Lifecycle, Database Storage & Credentials Architecture"
+agent_role: "Kubernetes Platform Architecture, Shell Automation, Tracing, Storage & Debugging Enforcer"
+trigger: "ON_REFERENCE | ON_CONTEXT_LOAD | ON_K8S_MANIFEST_CREATION | ON_SCRIPT_CREATION | ON_DB_CONFIG | ON_DEBUG"
+scope: "Production Kubernetes Manifests, Kustomize Overlays, ArgoCD GitOps, Shell Script Architecture, Distributed Tracing & Tempo Lifecycle, Database & Cache Topologies, Messaging Pipelines, Multi-Service Debugging & Flow Tracing"
 mode: "Strict"
-contract_version: "2.1"
+contract_version: "2.2"
 enforcement: "Absolute & Non-Negotiable"
 ---
 
-# Production Kubernetes, Shell Automation, Tracing & Database Contract
+# Production Kubernetes, Shell Automation, Tracing, Storage & Debugging Specification Contract
 
 > **Architectural Separation Principle:**  
 > Infrastructure specifications operate across distinct engineering layers. They must **NEVER** be mixed or configured arbitrarily:
 > - **Workloads & Services (`apps/`):** Stateless deployments, services, probes, and port bindings.
 > - **Routing & Gateways (`ingress/`):** Ingress controllers, TLS termination, routing rules, and path rewrites.
 > - **Environment Configurations (`config/`):** ConfigMaps, non-sensitive runtime config, feature flags, and endpoint configurations.
-> - **Stateful Infrastructure (`storage/`):** StatefulSets, volumes, persistent claims, databases, and caches (isolated per stateful technology).
+> - **Stateful Infrastructure (`storage/`):** StatefulSets, volumes, persistent claims, databases (`postgres/`), and distributed caches (`redis/`).
 > - **Telemetry & Operations (`observability/`):** Metrics, logs, traces, dashboards, and collectors separated by sub-stack (`collector/`, `prometheus/`, `loki/`, `tempo/`, `grafana/`).
 > - **Autoscaling & High Availability (`scaling-resilience/`):** HorizontalPodAutoscalers (HPA) and PodDisruptionBudgets (PDB).
 > - **Identity & Secrets (`security-secrets/`):** ExternalSecrets, SecretStores, and environment secret templates.
@@ -22,16 +22,18 @@ enforcement: "Absolute & Non-Negotiable"
 > - **Automation Scripts (`scripts/`):** Deduplicated, modular shell orchestrators with centralized logging, error trapping, dependency validation, and diagnostics.
 > - **Distributed Tracing Engine (`tempo/` & `collector/`):** OpenTelemetry Collector pipelines, Tempo ingester, compactor, storage retention, and metrics generators.
 > - **Database Topology & Secrets (`storage/postgres/` & `security-secrets/`):** StatefulSet volume claims, cluster-internal DNS, environment secret templates, credential rotation, and migration gates.
+> - **Interactive Diagnostics & Correlation (`scripts/run/debug.sh`):** Instant container exec, direct query invocation (`psql`, `redis-cli`), dual-log aggregation, and trace correlation across stateful stores and workloads.
 
 ---
 
 # PART I: STRICT NEGATIVE INVARIANTS (WHAT NOT TO DO AT ALL)
 
-0. **STRICT LAYER INTEGRITY & TRACING/DATABASE TOPOLOGY INVARIANT**:
+0. **STRICT LAYER INTEGRITY & TRACING/STORAGE TOPOLOGY INVARIANT**:
    - Strictly never dump heterogeneous Kubernetes manifests into a single root directory.
    - Every manifest must belong to its explicit architectural domain under `deploy/k8s/base/`.
    - Never run distributed tracing without aligning OTLP gRPC (`4317`) and OTLP HTTP (`4318`) ports across both Collector and Tempo Services.
    - Never run database workloads on ephemeral Deployments without persistent `volumeClaimTemplates`.
+   - Never expose internal caching or database engines directly to external Ingress routes or NodePorts.
 
 1. **NEVER Hardcode Database Passwords or Expose Stores Publicly:**
    - Database credentials must NEVER be placed plaintext in application source or committed to public repositories.
@@ -54,6 +56,9 @@ enforcement: "Absolute & Non-Negotiable"
 7. **NEVER Run Tempo Without Metrics Generator or Compactor Block Retention:**
    - Disabling `metrics_generator` in Tempo while using Grafana Traces Drilldown causes TraceQL rate aggregations to fail (`500 Internal Server Error: empty ring`).
    - Tempo must always configure explicit block retention and compaction windows.
+8. **NEVER Perform Blind In-Cluster Debugging Without Structured Scripts:**
+   - Guessing pod names or manually writing ad-hoc kubectl exec strings with hardcoded pod hashes is prohibited in standard operating procedures.
+   - Always invoke `./scripts/run/debug.sh <service> <command>` to dynamically resolve pod selectors and environment namespaces.
 
 ---
 
@@ -120,6 +125,7 @@ scripts/
 ├── lib/
 │   └── common.sh                              # Centralized logging, checks, diagnostics & cleanup
 └── run/
+    ├── debug.sh                               # Multi-service interactive query, shell & log debugger
     ├── k8s-local.sh                           # Single-entrypoint Kind, ArgoCD, deploy & port-forward
     ├── infra.sh                               # Infrastructure provisioning & compose orchestrator
     └── run.sh                                 # Native application runner & local lifecycle
@@ -225,42 +231,70 @@ Omitting port 4317 breaks the OpenTelemetry pipeline and results in silent span 
 
 ---
 
-# PART V: DATABASE ARCHITECTURE, SECRETS & POSTGRES CONFIGURATION
+# PART V: STORAGE, CACHING & MESSAGING PIPELINES
 
-## 1. PostgreSQL Stateful Architecture (`deploy/k8s/base/storage/postgres/`)
+## 1. PostgreSQL Database Architecture (`deploy/k8s/base/storage/postgres/`)
+- **StatefulSet & Volume Claim Templates**: Mounts persistent data directories to `/var/lib/postgresql/data`.
+- **Dedicated `PGDATA` Subdirectory**: PostgreSQL requires `/var/lib/postgresql/data/pgdata` to avoid root filesystem collisions with `lost+found`.
+- **ClusterIP Internal Service**: Accessible within the cluster namespace exclusively as `postgres.dev.svc:5432`.
+- **Credentials & Secrets**: Stored in `postgres-credentials` Secret (`POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`) and injected into workloads via `secretKeyRef`.
 
-Databases must never run as raw ephemeral Deployments. PostgreSQL is deployed as a Kubernetes `StatefulSet`:
-- **StatefulSet & Stable Pod Identity**: Mounts persistent data directories using `volumeClaimTemplates` to `/var/lib/postgresql/data`.
-- **Dedicated `PGDATA` Subdirectory**:
-  PostgreSQL requires a sub-path (`/var/lib/postgresql/data/pgdata`) because the mount point itself contains a `lost+found` directory which prevents `initdb` from executing cleanly if pointed at root.
-- **ClusterIP Internal Service**: Exposes port `5432` only within the cluster namespace (`postgres.dev.svc:5432`). External or NodePort access is strictly banned.
+## 2. Distributed Caching Pipeline (`deploy/k8s/base/storage/redis/`)
+- **Workload Role**: High-speed ephemeral cache, rate-limiting store, and session token state for `platform-api`.
+- **Deployment & Service**: Deployed under `storage/redis/` exposing ClusterIP port `6379` (`redis.dev.svc:6379`).
+- **Health Probes**: Liveness and readiness via `redis-cli ping` returning `PONG`.
 
-## 2. Password & Secret Management (`postgres-credentials.dev.yaml`)
-
-PostgreSQL credentials are decoupled from configuration and managed via Kubernetes `Secret`:
-- **Secret Schema**:
+## 3. Declarative Messaging & Event Streaming Pipelines (`messaging/`)
+- **Topics Specification (`messaging/topics/topics.yaml`)**:
+  Declarative event bus manifests specifying partitions, replication factor, and retention:
   ```yaml
-  apiVersion: v1
-  kind: Secret
-  metadata:
-    name: postgres-credentials
-    namespace: dev
-  type: Opaque
-  stringData:
-    POSTGRES_DB: idp_db
-    POSTGRES_USER: postgres
-    POSTGRES_PASSWORD: <strong_random_password>
+  topics:
+    - name: internal-developer-platform.events
+      partitions: 3
+      replication_factor: 1
+      retention_ms: 604800000  # 7-day retention
   ```
-- **StatefulSet Consumption**:
-  The PostgreSQL container reads `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD` from the secret using `secretKeyRef`.
-- **Application Workload Injection**:
-  Applications consume the database connection string and credentials by combining:
-  1. Internal DNS endpoint (`postgres.dev.svc:5432`) and database name from `internal-developer-platform-config` ConfigMap.
-  2. Injected secret environment variable (`DATABASE_PASSWORD`) directly from `secretKeyRef` pointing to `postgres-credentials`.
+- **Outbox & Database-Message Correlation**:
+  When domain entities transition state, events are committed transactionally to the database outbox table before propagation to avoid distributed state corruption.
 
-## 3. Why Initial Configurations Fail & Root Cause Analysis
+---
 
-When deploying Kubernetes databases and applications, common failure modes must be proactively prevented:
+# PART VI: MULTI-SERVICE DEBUGGING, FLOW EXECUTION & TRACING (`scripts/run/debug.sh`)
+
+To troubleshoot tightly coupled microservices, database transactions, and messaging pipelines without tedious manual kubectl lookups, use the unified debugger:
+
+### 1. Interactive Container Shell Access
+Access container shells directly using symbolic names:
+```bash
+./scripts/run/debug.sh postgres shell   # Opens interactive bash inside postgres-0
+./scripts/run/debug.sh redis shell      # Opens sh inside redis pod
+./scripts/run/debug.sh app shell        # Opens sh inside platform-api
+```
+
+### 2. Direct Query Invocation (Zero Port-Forward Needed)
+Run ad-hoc database or cache queries through the in-cluster network:
+```bash
+# Query PostgreSQL tables directly:
+./scripts/run/debug.sh postgres query "SELECT tablename FROM pg_tables WHERE schemaname='public';"
+./scripts/run/debug.sh postgres query "SELECT id, name, environment FROM service_descriptors LIMIT 5;"
+
+# Query Redis cache:
+./scripts/run/debug.sh redis query PING
+./scripts/run/debug.sh redis query KEYS "*"
+./scripts/run/debug.sh redis query GET "<cache_key>"
+```
+
+### 3. Multi-Component Log Correlation & Flow Tracing
+When debugging issues where database queries, API requests, and trace emissions interact:
+```bash
+# Stream correlated logs simultaneously from Platform API, PostgreSQL, and OTel Collector:
+./scripts/run/debug.sh all follow-flow
+```
+This enables real-time observation of API request arrival $\rightarrow$ SQL statement execution $\rightarrow$ OpenTelemetry span export in a single unified terminal view.
+
+---
+
+# PART VII: ROOT CAUSE ANALYSIS OF INITIAL FAILURES
 
 | Failure Mode | Root Cause | Mandatory Architectural Fix |
 |---|---|---|
@@ -272,7 +306,7 @@ When deploying Kubernetes databases and applications, common failure modes must 
 
 ---
 
-# PART VI: VERIFICATION & AUDIT CHECKLIST
+# PART VIII: VERIFICATION & AUDIT CHECKLIST
 
 Before committing or deploying, execute the following validation gates:
 
@@ -284,10 +318,12 @@ Before committing or deploying, execute the following validation gates:
    ```bash
    bash -n scripts/lib/common.sh
    bash -n scripts/run/k8s-local.sh
+   bash -n scripts/run/debug.sh
    ```
-3. [ ] **PostgreSQL Health & Connection Gate**:
+3. [ ] **Storage & Cache Readiness Gate**:
    ```bash
-   kubectl exec -n dev statefulset/postgres -- pg_isready -U postgres -d idp_db
+   ./scripts/run/debug.sh postgres query "SELECT 1;"
+   ./scripts/run/debug.sh redis query PING
    ```
 4. [ ] **Tracing Pipeline Port Verification**:
    Verify that `kubectl get svc tempo -n dev` exposes ports 3200, 4317, and 4318.
